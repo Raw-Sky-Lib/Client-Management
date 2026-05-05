@@ -40,12 +40,12 @@
   - [x] Rate limit: 5 req/min per IP on `/connect`
   - [ ] Depends on: CLI-7, CLI-8
 
-- [ ] **CLI-10** Implement portal auth (JWT with tenant claims)
-  - [ ] `internal/auth/` — full feature
-  - [ ] `PortalClaims` struct: `user_id`, `tenant_id`, `email`, `supabase_url`, `supabase_anon_key`
-  - [ ] Magic link flow: `POST /auth/magic-link` → Supabase → `/auth/callback` → `POST /auth/exchange` → portal JWT
-  - [ ] `GET /auth/profile`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/csrf`
-  - [ ] Depends on: CLI-9
+- [x] **CLI-10** Implement portal auth (JWT with tenant claims)
+  - [x] `internal/auth/` — full feature
+  - [x] `PortalClaims` struct: `user_id`, `tenant_id`, `email`, `supabase_url`, `supabase_anon_key`
+  - [x] Magic link flow: `POST /auth/magic-link` → Supabase → `/auth/callback` → `POST /auth/exchange` → portal JWT
+  - [x] `GET /auth/profile`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/csrf`
+  - [x] Depends on: CLI-9
 
 - [ ] **CLI-11** Implement tenant registry service
   - [ ] `internal/tenant/` — model, repository, service

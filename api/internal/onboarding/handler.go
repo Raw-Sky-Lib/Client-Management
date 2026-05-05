@@ -6,26 +6,42 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/DagMT/client-portal/internal/auth"
 	"github.com/DagMT/client-portal/internal/utils"
 	"github.com/go-playground/validator/v10"
 )
 
 type Handler struct {
-	svc          *Service
-	validate     *validator.Validate
-	agencyToken  string
-	frontendURL  string
+	svc         *Service
+	validate    *validator.Validate
+	agencyToken string
+	frontendURL string
+	jwtIssuer   auth.JWTIssuer
 }
 
-func NewHandler(svc *Service, agencyToken, frontendURL string) *Handler {
+func NewHandler(svc *Service, agencyToken, frontendURL string, jwtIssuer auth.JWTIssuer) *Handler {
 	return &Handler{
 		svc:         svc,
 		validate:    validator.New(),
 		agencyToken: agencyToken,
 		frontendURL: frontendURL,
+		jwtIssuer:   jwtIssuer,
 	}
 }
 
+// Connect handles POST /api/onboarding/connect
+//
+// @Summary     Request email confirmation
+// @Description Validates the connection token against agency-hub and sends a confirmation link to the client's email.
+// @Tags        onboarding
+// @Accept      json
+// @Produce     json
+// @Param       body body ConnectRequest true "Connection request"
+// @Success     200 {object} utils.MessageResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     429 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/onboarding/connect [post]
 func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -49,6 +65,17 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Confirm handles GET /api/onboarding/confirm
+//
+// @Summary     Confirm email and complete onboarding
+// @Description Verifies the emailed token, creates the Supabase user, sets portal JWT cookies, and redirects to the dashboard.
+// @Tags        onboarding
+// @Produce     json
+// @Param       token query string true "Email confirmation token"
+// @Success     307 "Redirect to /dashboard"
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/onboarding/confirm [get]
 func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
@@ -64,11 +91,27 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	// JWT issuance wired in CLI-10 — claims returned and ready
-	_ = claims
+	if err := h.jwtIssuer.IssueTokenPair(w, claims); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
 	http.Redirect(w, r, h.frontendURL+"/dashboard", http.StatusTemporaryRedirect)
 }
 
+// RegisterClient handles POST /api/admin/register-client
+//
+// @Summary     Register a client tenant
+// @Description Called by agency-hub to register a client's Supabase project. Validates credentials, runs CMS migrations, and encrypts secrets.
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Param       Authorization header string true "Bearer {AGENCY_MANAGEMENT_TOKEN}"
+// @Param       body body RegisterClientRequest true "Client registration payload"
+// @Success     201 {object} utils.OKResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/admin/register-client [post]
 func (h *Handler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") || auth[7:] != h.agencyToken {
