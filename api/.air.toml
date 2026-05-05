@@ -1,0 +1,26 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/main"
+  cmd = "go build -o ./tmp/main ./cmd/app/"
+  delay = 1000
+  exclude_dir = ["assets", "tmp", "vendor", "web", "docs", "supabase"]
+  exclude_regex = ["_test.go"]
+  include_ext = ["go"]
+  log = "build-errors.log"
+  stop_on_error = true
+  send_interrupt = true
+
+[color]
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  time = false
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true
