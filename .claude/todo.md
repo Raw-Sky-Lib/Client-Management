@@ -4,14 +4,16 @@
 
 ## Cycle 1 · M1: Backend Foundation
 
-- [ ] **CLI-5** Set up Go project + install dependencies
-  - [ ] Chi v5, validator, swag, air, anthropic-sdk-go, logging with slog(refer,the logging.md file)
-  - [ ] Create all `internal/` feature folders
+- [x] **CLI-5** Set up Go project + install dependencies
+  - [x] Chi v5, validator, swag, air, anthropic-sdk-go, logging with slog(refer,the logging.md file)
+  - [x] Create all `internal/` feature folders
 
-- [ ] **CLI-6** Set up portal's own Supabase project
-  - [ ] Create Supabase project: client-portal-prod
-  - [ ] Save credentials to 1Password
-  - [ ] Run migrations: `001_create_tenants.sql`, `002_create_email_confirmations.sql`, `003_create_tenant_users.sql`
+- [x] **CLI-6** Set up portal's own Supabase project
+  - [x] Create Supabase project: client-portal-prod
+  - [x] Run migrations: `001_create_tenants.sql`, `002_create_email_confirmations.sql`, `003_create_tenant_users.sql`
+  - [x] Client CMS migrations: `001–006` (site_settings, pages, posts, nav_items, form_submissions, media)
+  - [x] `MigratePortalDB()` + `MigrateClientDB()` — embedded via `embed.FS`, runs on `register-client`
+  - [x] `ValidateSupabaseCredentials()` — tests URL + service role key before storing
 
 - [ ] **CLI-7** Implement startup management token validation
   - [ ] `internal/startup/validate.go`
