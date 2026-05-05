@@ -47,12 +47,12 @@
   - [x] `GET /auth/profile`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/csrf`
   - [x] Depends on: CLI-9
 
-- [ ] **CLI-11** Implement tenant registry service
-  - [ ] `internal/tenant/` — model, repository, service
-  - [ ] AES-256-GCM encrypt/decrypt for Supabase credentials (`internal/utils/crypto.go`)
-  - [ ] `ResolveTenant()` middleware — inject tenant config into handler context
-  - [ ] `POST /api/admin/register-client` endpoint (called by agency-hub, not clients)
-  - [ ] Depends on: CLI-10
+- [x] **CLI-11** Implement tenant registry service
+  - [x] `internal/tenant/` — model, repository, service
+  - [x] AES-256-GCM encrypt/decrypt for Supabase credentials (`internal/utils/crypto.go`)
+  - [x] `ResolveTenant()` middleware — inject tenant config into handler context
+  - [x] `POST /api/admin/register-client` endpoint (called by agency-hub, not clients)
+  - [x] Depends on: CLI-10
 
 - [ ] **CLI-12** Implement ISR revalidation service
   - [ ] `internal/revalidate/service.go`
