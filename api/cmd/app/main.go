@@ -10,12 +10,14 @@ import (
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/middleware"
+	"github.com/DagMT/client-portal/internal/onboarding"
 	"github.com/DagMT/client-portal/internal/startup"
 	"github.com/DagMT/client-portal/internal/utils"
 	"github.com/DagMT/client-portal/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/redis/go-redis/v9"
+	"github.com/resend/resend-go/v2"
 )
 
 func main() {
@@ -54,6 +56,21 @@ func main() {
 		logger.Fatal("startup validation failed", slog.String("Error", err.Error()))
 	}
 
+	encKey, err := utils.DeriveEncryptionKey(cfg.JWTSecret)
+	if err != nil {
+		logger.Fatal("derive encryption key", slog.String("Error", err.Error()))
+	}
+
+	// Onboarding
+	resendClient := resend.NewClient(cfg.ResendAPIKey)
+	onboardRepo := onboarding.NewRepository(pool)
+	onboardSvc := onboarding.NewService(
+		onboardRepo, httpClient, resendClient, cfg.ResendFrom,
+		cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID,
+		encKey, cfg.FrontendURL,
+	)
+	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.AgencyManagementToken, cfg.FrontendURL)
+
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -71,11 +88,8 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.CSRF)
 
-		// Onboarding — rate limited by IP, no auth required
-		// r.With(middleware.RateLimit(rdb, "onboard", 5, time.Minute)).
-		//     Mount("/api/onboarding", onboarding.Routes(...))  // wired in CLI-9
+		r.Route("/api/onboarding", onboarding.Routes(onboardHandler, rdb))
 
-		// Auth endpoints
 		// r.Mount("/api/auth", auth.Routes(...))  // wired in CLI-10
 
 		// Authenticated routes — 30/min per IP
@@ -88,7 +102,7 @@ func main() {
 	})
 
 	// Admin routes — machine-to-machine, no CSRF
-	// r.Mount("/api/admin", admin.Routes(...))  // wired in CLI-11
+	r.Route("/api/admin", onboarding.AdminRoutes(onboardHandler))
 
 	logger.Log.Info("Starting client-portal API",
 		slog.String("Port", cfg.Port),

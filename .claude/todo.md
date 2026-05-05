@@ -24,20 +24,20 @@
 - [x] **CLI-8** Implement config, DB, middleware stack
   - [x] `config.go`, `db.go`, `security.go`, `logger.go`, `csrf.go`, `ratelimit.go`, `auth.go`
 
-- [ ] **CLI-9** Implement onboarding flow (backend)
-  - [ ] `internal/onboarding/` — full feature
-  - [ ] `POST /onboarding/connect`:
+- [x] **CLI-9** Implement onboarding flow (backend)
+  - [x] `internal/onboarding/` — full feature
+  - [x] `POST /onboarding/connect`:
     1. Call agency-hub `POST /validate-connection-token` with entered token
     2. If valid: store email confirmation in portal DB (do NOT create Supabase user yet)
     3. Send confirmation email via Resend
-  - [ ] `GET /onboarding/confirm?token=...`:
+  - [x] `GET /onboarding/confirm?token=...`:
     1. Verify + consume confirmation token from portal DB
     2. Create user in client's Supabase Auth via service role key
     3. Mark tenant onboarded in portal tenant registry
     4. Create `tenant_users` record (email → tenant_id)
     5. Issue portal JWT with tenant Supabase config embedded
-  - [ ] Error messages: expired / used / invalid token → correct user-facing copy
-  - [ ] Rate limit: 5 req/min per IP on `/connect`
+  - [x] Error messages: expired / used / invalid token → correct user-facing copy
+  - [x] Rate limit: 5 req/min per IP on `/connect`
   - [ ] Depends on: CLI-7, CLI-8
 
 - [ ] **CLI-10** Implement portal auth (JWT with tenant claims)
