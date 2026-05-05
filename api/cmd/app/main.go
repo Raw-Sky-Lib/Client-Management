@@ -21,6 +21,7 @@ import (
 	"github.com/DagMT/client-portal/internal/middleware"
 	"github.com/DagMT/client-portal/internal/onboarding"
 	"github.com/DagMT/client-portal/internal/startup"
+	"github.com/DagMT/client-portal/internal/tenant"
 	"github.com/DagMT/client-portal/internal/utils"
 	"github.com/DagMT/client-portal/pkg/logger"
 	"github.com/go-chi/chi/v5"
@@ -82,6 +83,10 @@ func main() {
 	)
 	authHandler := auth.NewHandler(authSvc, secure)
 
+	// Tenant
+	tenantRepo := tenant.NewRepository(pool)
+	tenantSvc := tenant.NewService(tenantRepo, encKey)
+
 	// Onboarding
 	onboardRepo := onboarding.NewRepository(pool)
 	onboardSvc := onboarding.NewService(
@@ -127,6 +132,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Authenticate(cfg.JWTSecret))
 			r.Use(middleware.RateLimit(rdb, "auth", 30, time.Minute))
+			r.Use(tenant.ResolveTenant(tenantSvc))
 
 			// r.Mount("/api/assistant", claude.Routes(...))  // wired in CLI-16
 		})
