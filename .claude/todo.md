@@ -24,7 +24,7 @@
 - [x] **CLI-8** Implement config, DB, middleware stack
   - [x] `config.go`, `db.go`, `security.go`, `logger.go`, `csrf.go`, `ratelimit.go`, `auth.go`
 
-- [x] **CLI-9** Implement onboarding flow (backend)
+- [x] **CLI-9**   
   - [x] `internal/onboarding/` — full feature
   - [x] `POST /onboarding/connect`:
     1. Call agency-hub `POST /validate-connection-token` with entered token
