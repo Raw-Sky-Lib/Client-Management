@@ -1,3 +1,10 @@
+// Package main is the entry point for the client-portal API server.
+//
+// @title           Client Portal API
+// @version         1.0
+// @description     Multi-tenant CMS dashboard backend. Clients manage website content here.
+// @host            localhost:8081
+// @BasePath        /
 package main
 
 import (
@@ -7,6 +14,8 @@ import (
 	"net/http"
 	"time"
 
+	_ "github.com/DagMT/client-portal/docs"
+	"github.com/DagMT/client-portal/internal/auth"
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/middleware"
@@ -16,6 +25,7 @@ import (
 	"github.com/DagMT/client-portal/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/resend/resend-go/v2"
 )
@@ -61,15 +71,25 @@ func main() {
 		logger.Fatal("derive encryption key", slog.String("Error", err.Error()))
 	}
 
-	// Onboarding
 	resendClient := resend.NewClient(cfg.ResendAPIKey)
+	secure := cfg.Environment == "production"
+
+	// Auth — must be wired before onboarding (onboarding.NewHandler needs JWTIssuer)
+	authRepo := auth.NewRepository(pool)
+	authSvc := auth.NewService(
+		authRepo, httpClient, resendClient, cfg.ResendFrom, cfg.FrontendURL,
+		encKey, cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry, secure,
+	)
+	authHandler := auth.NewHandler(authSvc, secure)
+
+	// Onboarding
 	onboardRepo := onboarding.NewRepository(pool)
 	onboardSvc := onboarding.NewService(
 		onboardRepo, httpClient, resendClient, cfg.ResendFrom,
 		cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID,
 		encKey, cfg.FrontendURL,
 	)
-	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.AgencyManagementToken, cfg.FrontendURL)
+	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.AgencyManagementToken, cfg.FrontendURL, authSvc)
 
 	r := chi.NewRouter()
 
@@ -79,7 +99,15 @@ func main() {
 	r.Use(middleware.Security)
 	r.Use(chimiddleware.Recoverer)
 
+	// Swagger UI — dev/staging only
+	r.Get("/swagger/*", httpSwagger.WrapHandler)
+
 	// Health — exempt from auth and CSRF
+	// @Summary     Health check
+	// @Tags        health
+	// @Produce     json
+	// @Success     200 {object} map[string]string
+	// @Router      /health [get]
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		utils.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -89,8 +117,11 @@ func main() {
 		r.Use(middleware.CSRF)
 
 		r.Route("/api/onboarding", onboarding.Routes(onboardHandler, rdb))
-
-		// r.Mount("/api/auth", auth.Routes(...))  // wired in CLI-10
+		r.Route("/api/auth", auth.Routes(
+			authHandler,
+			middleware.RateLimit(rdb, "magic_link", 5, time.Minute),
+			middleware.Authenticate(cfg.JWTSecret),
+		))
 
 		// Authenticated routes — 30/min per IP
 		r.Group(func(r chi.Router) {

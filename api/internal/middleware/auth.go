@@ -10,10 +10,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type contextKey string
-
-const claimsKey contextKey = "portal_claims"
-
 func Authenticate(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,14 +31,12 @@ func Authenticate(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), claimsKey, claims)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(auth.WithClaims(r.Context(), claims)))
 		})
 	}
 }
 
 // ClaimsFromContext extracts PortalClaims injected by Authenticate middleware.
 func ClaimsFromContext(ctx context.Context) (*auth.PortalClaims, bool) {
-	claims, ok := ctx.Value(claimsKey).(*auth.PortalClaims)
-	return claims, ok
+	return auth.ClaimsFromContext(ctx)
 }
