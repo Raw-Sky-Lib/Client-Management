@@ -21,8 +21,8 @@
   - [x] Retry 3× with 2s backoff (Railway cold start protection)
   - [x] `os.Exit(1)` if invalid — fail loud, not silent
 
-- [ ] **CLI-8** Implement config, DB, middleware stack
-  - [ ] `config.go`, `db.go`, `security.go`, `logger.go`, `csrf.go`, `ratelimit.go`, `auth.go`
+- [x] **CLI-8** Implement config, DB, middleware stack
+  - [x] `config.go`, `db.go`, `security.go`, `logger.go`, `csrf.go`, `ratelimit.go`, `auth.go`
 
 - [ ] **CLI-9** Implement onboarding flow (backend)
   - [ ] `internal/onboarding/` — full feature
