@@ -15,11 +15,11 @@
   - [x] `MigratePortalDB()` + `MigrateClientDB()` — embedded via `embed.FS`, runs on `register-client`
   - [x] `ValidateSupabaseCredentials()` — tests URL + service role key before storing
 
-- [ ] **CLI-7** Implement startup management token validation
-  - [ ] `internal/startup/validate.go`
-  - [ ] Calls `GET /validate-management-token` on agency-hub at startup
-  - [ ] Retry 3× with 2s backoff (Railway cold start protection)
-  - [ ] `os.Exit(1)` if invalid — fail loud, not silent
+- [x] **CLI-7** Implement startup management token validation
+  - [x] `internal/startup/validate.go`
+  - [x] Calls `GET /validate-management-token` on agency-hub at startup
+  - [x] Retry 3× with 2s backoff (Railway cold start protection)
+  - [x] `os.Exit(1)` if invalid — fail loud, not silent
 
 - [ ] **CLI-8** Implement config, DB, middleware stack
   - [ ] `config.go`, `db.go`, `security.go`, `logger.go`, `csrf.go`, `ratelimit.go`, `auth.go`
