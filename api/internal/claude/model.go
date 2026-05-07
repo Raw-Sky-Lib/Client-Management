@@ -3,8 +3,9 @@ package claude
 import "errors"
 
 var (
-	ErrPageNotFound    = errors.New("page not found")
-	ErrSectionNotFound = errors.New("section not found on page")
+	ErrPageNotFound          = errors.New("page not found")
+	ErrSectionNotFound       = errors.New("section not found on page")
+	ErrInvalidClaudeResponse = errors.New("invalid_claude_response")
 )
 
 type GenerateRequest struct {

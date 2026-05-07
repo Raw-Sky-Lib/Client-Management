@@ -78,20 +78,20 @@
   - [x] Never fail the user request if usage recording fails
   - [x] Depends on: CLI-11
 
-- [ ] **CLI-15** Implement Claude prompt builder
-  - [ ] `internal/claude/prompt.go`
-  - [ ] Fetches current section from client's Supabase via service role key
-  - [ ] Builds system prompt with: business name, page, section, current content JSON
-  - [ ] Returns `(systemPrompt string, currentContent map[string]any, err)`
-  - [ ] Depends on: CLI-11
+- [x] **CLI-15** Implement Claude prompt builder
+  - [x] `internal/claude/prompt.go`
+  - [x] Fetches current section from client's Supabase via service role key
+  - [x] Builds system prompt with: business name, page, section, current content JSON
+  - [x] Returns `(systemPrompt string, currentContent map[string]any, err)`
+  - [x] Depends on: CLI-11
 
-- [ ] **CLI-16** Implement Claude service + handler
-  - [ ] `internal/claude/service.go` — orchestrates: rate limit → budget → prompt → API call → record usage
-  - [ ] `internal/claude/handler.go` — `POST /assistant/generate`
-  - [ ] Parse Claude response as `[]FieldChange` JSON array
-  - [ ] Invalid JSON from Claude → return 500 "temporarily unavailable" (not raw parse error)
-  - [ ] 429 responses: distinct messages for minute / hour / budget exceeded
-  - [ ] Depends on: CLI-13, CLI-14, CLI-15
+- [x] **CLI-16** Implement Claude service + handler
+  - [x] `internal/claude/service.go` — orchestrates: rate limit → budget → prompt → API call → record usage
+  - [x] `internal/claude/handler.go` — `POST /assistant/generate`
+  - [x] Parse Claude response as `[]FieldChange` JSON array
+  - [x] Invalid JSON from Claude → return 500 "temporarily unavailable" (not raw parse error)
+  - [x] 429 responses: distinct messages for minute / hour / budget exceeded
+  - [x] Depends on: CLI-13, CLI-14, CLI-15
 
 ---
 

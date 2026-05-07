@@ -5,6 +5,10 @@
 // @description     Multi-tenant CMS dashboard backend. Clients manage website content here.
 // @host            localhost:8081
 // @BasePath        /
+// @securitydefinitions.apikey CookieAuth
+// @in              cookie
+// @name            access_token
+// @description     Portal JWT stored in the access_token HTTP-only cookie. Issued by /api/auth/exchange or /api/onboarding/confirm.
 package main
 
 import (
@@ -16,6 +20,7 @@ import (
 
 	_ "github.com/DagMT/client-portal/docs"
 	"github.com/DagMT/client-portal/internal/auth"
+	"github.com/DagMT/client-portal/internal/claude"
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/middleware"
@@ -101,8 +106,16 @@ func main() {
 
 	logger.Trace("wiring revalidation service")
 	revalidateSvc := revalidate.NewService(httpClient)
-	_ = revalidateSvc // passed to content handlers in CLI-16+
+	_ = revalidateSvc // passed to content handlers in CLI-26+
 	logger.Trace("revalidation service ready")
+
+	logger.Trace("wiring Claude assistant feature")
+	claudeRL := claude.NewRateLimiter(rdb)
+	claudeRepo := claude.NewRepository(httpClient, cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID)
+	claudePrompt := claude.NewPromptBuilder(httpClient)
+	claudeSvc := claude.NewService(claudeRL, claudeRepo, claudePrompt, cfg.AnthropicAPIKey, cfg.AnthropicDefaultModel)
+	claudeHandler := claude.NewHandler(claudeSvc)
+	logger.Trace("Claude assistant feature ready")
 
 	logger.Trace("wiring onboarding feature")
 	onboardRepo := onboarding.NewRepository(pool)
@@ -123,18 +136,33 @@ func main() {
 	r.Use(middleware.Security)
 	r.Use(chimiddleware.Recoverer)
 
-	// Swagger UI — dev/staging only
-	r.Get("/swagger/*", httpSwagger.WrapHandler)
+	// Swagger UI — development and staging only, never production.
+	// Behaves like the real frontend: cookies sent automatically, CSRF header injected
+	// from the csrf_token cookie on every mutation, auth state persisted across refreshes.
+	if cfg.Environment != "production" {
+		r.Get("/swagger/*", httpSwagger.Handler(
+			httpSwagger.PersistAuthorization(true),
+			httpSwagger.UIConfig(map[string]string{
+				// Send cookies with every request (mirrors axios withCredentials: true)
+				"withCredentials": "true",
+				// Automatically attach X-CSRF-Token from the csrf_token cookie —
+				// the same double-submit pattern the frontend axios interceptor does.
+				// Call GET /api/auth/csrf first; after that every POST just works.
+				"requestInterceptor": `function(request) {
+					const match = document.cookie
+						.split('; ')
+						.find(function(c) { return c.startsWith('csrf_token='); });
+					if (match) {
+						request.headers['X-CSRF-Token'] = match.split('=')[1];
+					}
+					return request;
+				}`,
+			}),
+		))
+	}
 
 	// Health — exempt from auth and CSRF
-	// @Summary     Health check
-	// @Tags        health
-	// @Produce     json
-	// @Success     200 {object} map[string]string
-	// @Router      /health [get]
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		utils.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	r.Get("/health", healthCheck)
 
 	// CSRF-protected routes (all browser-facing)
 	r.Group(func(r chi.Router) {
@@ -153,7 +181,7 @@ func main() {
 			r.Use(middleware.RateLimit(rdb, "auth", 30, time.Minute))
 			r.Use(tenant.ResolveTenant(tenantSvc))
 
-			// r.Mount("/api/assistant", claude.Routes(...))  // wired in CLI-16
+			r.Route("/api/assistant", claude.Routes(claudeHandler))
 		})
 	})
 
@@ -169,4 +197,15 @@ func main() {
 	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
 		logger.Fatal("server stopped", slog.String("Error", err.Error()))
 	}
+}
+
+// healthCheck returns 200 OK when the server is running.
+//
+// @Summary     Health check
+// @Tags        health
+// @Produce     json
+// @Success     200 {object} map[string]string
+// @Router      /health [get]
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -36,9 +36,11 @@ func NewHandler(svc *Service, agencyToken, frontendURL string, jwtIssuer auth.JW
 // @Tags        onboarding
 // @Accept      json
 // @Produce     json
-// @Param       body body ConnectRequest true "Connection request"
+// @Param       X-CSRF-Token header string true "CSRF token from GET /api/auth/csrf (double-submit cookie pattern)"
+// @Param       body         body   ConnectRequest true "Connection request"
 // @Success     200 {object} utils.MessageResponse
 // @Failure     400 {object} utils.ErrorResponse
+// @Failure     403 {object} utils.ErrorResponse "Missing or invalid CSRF token"
 // @Failure     429 {object} utils.ErrorResponse
 // @Failure     500 {object} utils.ErrorResponse
 // @Router      /api/onboarding/connect [post]
@@ -101,13 +103,13 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 // RegisterClient handles POST /api/admin/register-client
 //
 // @Summary     Register a client tenant
-// @Description Called by agency-hub to register a client's Supabase project. Validates credentials, runs CMS migrations, and encrypts secrets.
+// @Description Called by agency-hub to register a client's Supabase project. Validates credentials, runs CMS migrations, and encrypts secrets. No CSRF required — machine-to-machine.
 // @Tags        admin
 // @Accept      json
 // @Produce     json
 // @Param       Authorization header string true "Bearer {AGENCY_MANAGEMENT_TOKEN}"
-// @Param       body body RegisterClientRequest true "Client registration payload"
-// @Success     201 {object} utils.OKResponse
+// @Param       body          body   RegisterClientRequest true "Client registration payload"
+// @Success     201 {object} RegisteredResponse
 // @Failure     400 {object} utils.ErrorResponse
 // @Failure     401 {object} utils.ErrorResponse
 // @Failure     500 {object} utils.ErrorResponse
