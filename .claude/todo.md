@@ -64,19 +64,19 @@
 
 ## Cycle 2 · M2: Claude Content Assistant (Backend)
 
-- [ ] **CLI-13** Implement Claude rate limiter
-  - [ ] `internal/claude/ratelimit.go`
-  - [ ] Sliding window: 5/min + 20/hour per `tenant_id`
-  - [ ] Redis keys: `claude_rl:{tenant_id}:minute`, `claude_rl:{tenant_id}:hour`
-  - [ ] Depends on: CLI-8
+- [x] **CLI-13** Implement Claude rate limiter
+  - [x] `internal/claude/ratelimit.go`
+  - [x] Sliding window: 5/min + 20/hour per `tenant_id`
+  - [x] Redis keys: `claude_rl:{tenant_id}:minute`, `claude_rl:{tenant_id}:hour`
+  - [x] Depends on: CLI-8
 
-- [ ] **CLI-14** Implement Claude usage repository
-  - [ ] `internal/claude/repository.go`
-  - [ ] `RecordUsage()` — calls `POST /api/claude/usage` on agency-hub (fire-and-forget)
-  - [ ] `CheckBudget()` — calls `GET /api/claude/budget/{client_id}` on agency-hub
-  - [ ] Auth: `Authorization: Bearer AGENCY_MANAGEMENT_TOKEN` + `X-Client-ID` header
-  - [ ] Never fail the user request if usage recording fails
-  - [ ] Depends on: CLI-11
+- [x] **CLI-14** Implement Claude usage repository
+  - [x] `internal/claude/repository.go`
+  - [x] `RecordUsage()` — calls `POST /api/claude/usage` on agency-hub (fire-and-forget)
+  - [x] `CheckBudget()` — calls `GET /api/claude/budget/{client_id}` on agency-hub
+  - [x] Auth: `Authorization: Bearer AGENCY_MANAGEMENT_TOKEN` + `X-Client-ID` header
+  - [x] Never fail the user request if usage recording fails
+  - [x] Depends on: CLI-11
 
 - [ ] **CLI-15** Implement Claude prompt builder
   - [ ] `internal/claude/prompt.go`
