@@ -17,6 +17,11 @@ type RegisterClientRequest struct {
 	SiteURL                      string `json:"site_url"                         validate:"required,url" example:"https://client-site.com"`
 }
 
+// RegisteredResponse is returned by POST /api/admin/register-client.
+type RegisteredResponse struct {
+	Registered bool `json:"registered" example:"true"`
+}
+
 // validateTokenResponse is the shape returned by agency-hub's validate-connection-token endpoint.
 type validateTokenResponse struct {
 	Valid     bool   `json:"valid"`
