@@ -54,11 +54,11 @@
   - [x] `POST /api/admin/register-client` endpoint (called by agency-hub, not clients)
   - [x] Depends on: CLI-10
 
-- [ ] **CLI-12** Implement ISR revalidation service
-  - [ ] `internal/revalidate/service.go`
-  - [ ] `TriggerISR(siteURL, paths, secret)` — HTTP POST to client-site `/api/revalidate`
-  - [ ] Non-blocking: fire-and-forget with error logging
-  - [ ] Depends on: CLI-8
+- [x] **CLI-12** Implement ISR revalidation service
+  - [x] `internal/revalidate/service.go`
+  - [x] `TriggerISR(siteURL, paths, secret)` — HTTP POST to client-site `/api/revalidate`
+  - [x] Non-blocking: fire-and-forget with error logging
+  - [x] Depends on: CLI-8
 
 ---
 

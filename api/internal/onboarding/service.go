@@ -36,7 +36,8 @@ type Service struct {
 	agencyToken    string
 	agencyClientID string
 	encKey         []byte
-	frontendURL    string
+	publicURL      string // backend's own URL — confirmation email links point here
+	frontendURL    string // frontend URL — post-confirm redirect target
 }
 
 func NewService(
@@ -46,7 +47,7 @@ func NewService(
 	resendFrom string,
 	agencyURL, agencyToken, agencyClientID string,
 	encKey []byte,
-	frontendURL string,
+	publicURL, frontendURL string,
 ) *Service {
 	return &Service{
 		repo:           repo,
@@ -57,6 +58,7 @@ func NewService(
 		agencyToken:    agencyToken,
 		agencyClientID: agencyClientID,
 		encKey:         encKey,
+		publicURL:      publicURL,
 		frontendURL:    frontendURL,
 	}
 }
@@ -237,7 +239,7 @@ func (s *Service) createSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 }
 
 func (s *Service) sendConfirmationEmail(to, token string) error {
-	link := fmt.Sprintf("%s/confirm?token=%s", s.frontendURL, token)
+	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, token)
 	_, err := s.resend.Emails.Send(&resend.SendEmailRequest{
 		From:    s.resendFrom,
 		To:      []string{to},
