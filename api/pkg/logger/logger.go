@@ -10,15 +10,20 @@ import (
 
 var Log *slog.Logger
 
-func InitLogger(environment string) {
-	if environment == "production" {
-		Log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		}))
+func InitLogger(env string) {
+	var handler slog.Handler //setting the slog handler
+	if env == "production" {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level:       slog.LevelInfo,
+			ReplaceAttr: replaceAttrProd})
 	} else {
-		Log = slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-			Level:      LevelTrace,
-			TimeFormat: time.Kitchen,
-		}))
+		handler = tint.NewHandler(os.Stdout, &tint.Options{
+			Level:       LevelTrace,
+			TimeFormat:  time.Kitchen,
+			ReplaceAttr: replaceAttrDev,
+		})
 	}
+
+	Log = slog.New(handler)
+
 }

@@ -20,15 +20,16 @@ import (
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/middleware"
 	"github.com/DagMT/client-portal/internal/onboarding"
+	"github.com/DagMT/client-portal/internal/revalidate"
 	"github.com/DagMT/client-portal/internal/startup"
 	"github.com/DagMT/client-portal/internal/tenant"
 	"github.com/DagMT/client-portal/internal/utils"
 	"github.com/DagMT/client-portal/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/resend/resend-go/v2"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func main() {
@@ -39,13 +40,17 @@ func main() {
 	}
 
 	logger.InitLogger(cfg.Environment)
+	logger.Trace("config loaded", slog.String("Environment", cfg.Environment), slog.String("Port", cfg.Port))
 
+	logger.Trace("connecting to database")
 	pool, err := database.Connect(cfg.SupabaseDBURL)
 	if err != nil {
 		logger.Fatal("could not connect to database", slog.String("Error", err.Error()))
 	}
 	defer pool.Close()
+	logger.Trace("database connected")
 
+	logger.Trace("connecting to Redis")
 	redisOpt, err := redis.ParseURL(cfg.UpstashRedisURL)
 	if err != nil {
 		logger.Fatal("invalid UPSTASH_REDIS_URL", slog.String("Error", err.Error()))
@@ -56,7 +61,9 @@ func main() {
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		logger.Fatal("could not connect to Redis", slog.String("Error", err.Error()))
 	}
+	logger.Trace("Redis connected")
 
+	logger.Trace("validating management token with agency-hub", slog.String("Agency", cfg.AgencyAPIURL))
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	if err := startup.ValidateManagementToken(
 		cfg.AgencyAPIURL,
@@ -66,36 +73,48 @@ func main() {
 	); err != nil {
 		logger.Fatal("startup validation failed", slog.String("Error", err.Error()))
 	}
+	logger.Trace("agency-hub management token valid")
 
 	encKey, err := utils.DeriveEncryptionKey(cfg.JWTSecret)
 	if err != nil {
 		logger.Fatal("derive encryption key", slog.String("Error", err.Error()))
 	}
+	logger.Trace("encryption key derived")
 
 	resendClient := resend.NewClient(cfg.ResendAPIKey)
 	secure := cfg.Environment == "production"
+	logger.Trace("Resend client initialized")
 
-	// Auth — must be wired before onboarding (onboarding.NewHandler needs JWTIssuer)
+	logger.Trace("wiring auth feature")
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(
 		authRepo, httpClient, resendClient, cfg.ResendFrom, cfg.FrontendURL,
 		encKey, cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry, secure,
 	)
 	authHandler := auth.NewHandler(authSvc, secure)
+	logger.Trace("auth feature ready")
 
-	// Tenant
+	logger.Trace("wiring tenant feature")
 	tenantRepo := tenant.NewRepository(pool)
 	tenantSvc := tenant.NewService(tenantRepo, encKey)
+	logger.Trace("tenant feature ready")
 
-	// Onboarding
+	logger.Trace("wiring revalidation service")
+	revalidateSvc := revalidate.NewService(httpClient)
+	_ = revalidateSvc // passed to content handlers in CLI-16+
+	logger.Trace("revalidation service ready")
+
+	logger.Trace("wiring onboarding feature")
 	onboardRepo := onboarding.NewRepository(pool)
 	onboardSvc := onboarding.NewService(
 		onboardRepo, httpClient, resendClient, cfg.ResendFrom,
 		cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID,
-		encKey, cfg.FrontendURL,
+		encKey, cfg.PublicURL, cfg.FrontendURL,
 	)
 	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.AgencyManagementToken, cfg.FrontendURL, authSvc)
+	logger.Trace("onboarding feature ready")
 
+	logger.Trace("building router")
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -140,6 +159,7 @@ func main() {
 
 	// Admin routes — machine-to-machine, no CSRF
 	r.Route("/api/admin", onboarding.AdminRoutes(onboardHandler))
+	logger.Trace("router ready")
 
 	logger.Log.Info("Starting client-portal API",
 		slog.String("Port", cfg.Port),

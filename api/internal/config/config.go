@@ -26,8 +26,7 @@ type Config struct {
 	JWTRefreshExpiry time.Duration
 
 	// Redis
-	UpstashRedisURL   string
-	UpstashRedisToken string
+	UpstashRedisURL string
 
 	// Claude
 	AnthropicAPIKey                 string
@@ -40,6 +39,7 @@ type Config struct {
 
 	// App
 	Environment string
+	PublicURL   string // backend's own public-facing URL (used in emails)
 	FrontendURL string
 	Port        string
 }
@@ -57,14 +57,14 @@ func LoadConfig() (*Config, error) {
 		AgencyManagementToken: os.Getenv("AGENCY_MANAGEMENT_TOKEN"),
 		JWTSecret:             os.Getenv("JWT_SECRET"),
 		UpstashRedisURL:       os.Getenv("UPSTASH_REDIS_URL"),
-		UpstashRedisToken:     os.Getenv("UPSTASH_REDIS_TOKEN"),
 		AnthropicAPIKey:       os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicDefaultModel: envOrDefault("ANTHROPIC_DEFAULT_MODEL", "claude-haiku-4-5-20251001"),
 		ResendAPIKey:          os.Getenv("RESEND_API_KEY"),
 		ResendFrom:            os.Getenv("RESEND_FROM"),
-		Environment:           envOrDefault("ENVIRONMENT", "development"),
-		FrontendURL:           envOrDefault("FRONTEND_URL", "http://localhost:5174"),
-		Port:                  envOrDefault("PORT", "8081"),
+		Environment: envOrDefault("ENVIRONMENT", "development"),
+		PublicURL:   envOrDefault("PUBLIC_URL", "http://localhost:8081"),
+		FrontendURL: envOrDefault("FRONTEND_URL", "http://localhost:5174"),
+		Port:        envOrDefault("PORT", "8081"),
 	}
 
 	if v := os.Getenv("CLAUDE_DEFAULT_MONTHLY_TOKEN_BUDGET"); v != "" {
@@ -92,7 +92,6 @@ func LoadConfig() (*Config, error) {
 		"AGENCY_MANAGEMENT_TOKEN": cfg.AgencyManagementToken,
 		"JWT_SECRET":              cfg.JWTSecret,
 		"UPSTASH_REDIS_URL":       cfg.UpstashRedisURL,
-		"UPSTASH_REDIS_TOKEN":     cfg.UpstashRedisToken,
 		"ANTHROPIC_API_KEY":       cfg.AnthropicAPIKey,
 		"RESEND_API_KEY":          cfg.ResendAPIKey,
 		"RESEND_FROM":             cfg.ResendFrom,
