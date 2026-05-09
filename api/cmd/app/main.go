@@ -159,6 +159,7 @@ func main() {
 				}`,
 			}),
 		))
+		logger.Trace("swagger UI enabled", slog.String("URL", "http://localhost:"+cfg.Port+"/swagger/index.html"))
 	}
 
 	// Health — exempt from auth and CSRF
