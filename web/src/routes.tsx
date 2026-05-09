@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import { GuestRoute } from '@/components/guards/GuestRoute'
 import { ProtectedRoute } from '@/components/guards/ProtectedRoute'
+import { ConnectPage } from '@/features/onboarding/connect-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -19,7 +20,7 @@ export const router = createBrowserRouter([
   {
     element: <GuestRoute />,
     children: [
-      { path: '/connect', element: <Placeholder name="ConnectPage" /> },
+      { path: '/connect', element: <ConnectPage /> },
     ],
   },
 
