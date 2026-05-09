@@ -1,57 +1,39 @@
 @import "tailwindcss";
 
-/* ─── Portal design tokens (light theme) ───────────────────────────────────
-   Contrast to agency-hub's dark theme. All colours reference these tokens
-   so a future dark-mode toggle only needs to swap :root values.
+/* ─── Tailwind v4 theme — registers design tokens as Tailwind utilities ──────
+   Colors:  bg-ink, bg-cream, bg-forest, text-ink, border-ink, etc.
+   Fonts:   font-sans (Outfit), font-mono (Space Mono)
+   Radius:  rounded-card (24px), rounded-panel (16px)
    ─────────────────────────────────────────────────────────────────────────── */
-:root {
-  /* Backgrounds */
-  --bg-page:       #f8f8f9;
-  --bg-surface:    #ffffff;
-  --bg-subtle:     #f3f4f6;
-  --bg-hover:      #f0f0f2;
+@theme {
+  /* Palette */
+  --color-cream:        #FAFAF7;
+  --color-ink:          #1C1C1A;
+  --color-forest:       #1A3D2B;
+  --color-forest-deep:  #0E2419;
+  --color-brand-red:    #E15A49;
+  --color-brand-pink:   #ECA7A2;
+  --color-brand-amber:  #F59E0B;
+  --color-status-green: #00C853;
 
-  /* Borders */
-  --border:        #e5e7eb;
-  --border-strong: #d1d5db;
+  /* Typography — override Tailwind defaults with Variants choices */
+  --font-sans: 'Outfit', sans-serif;
+  --font-mono: 'Space Mono', monospace;
 
-  /* Text */
-  --text-primary:   #111827;
-  --text-secondary: #6b7280;
-  --text-tertiary:  #9ca3af;
-  --text-inverse:   #ffffff;
-
-  /* Brand / accent */
-  --accent:           #6366f1;
-  --accent-hover:     #4f46e5;
-  --accent-subtle:    #eef2ff;
-  --accent-border:    #c7d2fe;
-
-  /* Status */
-  --success:        #16a34a;
-  --success-subtle: #f0fdf4;
-  --warning:        #d97706;
-  --warning-subtle: #fffbeb;
-  --danger:         #dc2626;
-  --danger-subtle:  #fef2f2;
-
-  /* Sidebar */
-  --sidebar-bg:     #ffffff;
-  --sidebar-width:  240px;
-
-  /* Topbar */
-  --topbar-height:  56px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
-
-  /* Typography */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  /* Named border-radius: rounded-card, rounded-panel */
+  --radius-card:  24px;
+  --radius-panel: 16px;
 }
 
-/* ─── Base reset ──────────────────────────────────────────────────────────── */
+/* ─── Raw design variables — used in inline styles and component CSS ─────── */
+:root {
+  --border-width:   2px;
+  --shadow-hard:    8px 8px 0 #1C1C1A;
+  --shadow-hard-sm: 6px 6px 0 #1C1C1A;
+  --shadow-hard-xs: 4px 4px 0 #1C1C1A;
+}
+
+/* ─── Base reset ─────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -65,8 +47,8 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg-page);
-  color: var(--text-primary);
+  background: #FAFAF7;
+  color: #1C1C1A;
 }
 
 #root {
