@@ -54,3 +54,16 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/* ─── Reusable button shadow — matches Variants hard-shadow hover pattern ─── */
+.btn-ink-shadow {
+  box-shadow: 6px 6px 0 #1C1C1A;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-ink-shadow:hover:not(:disabled) {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 #1C1C1A;
+}
+.btn-ink-shadow:disabled {
+  box-shadow: none;
+}
