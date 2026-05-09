@@ -101,19 +101,19 @@
   - [x] Same dependencies as agency-hub `web/`
   - [x] Add: Supabase JS client, Tiptap + extensions
 
-- [ ] **CLI-18** Set up axios client + Supabase context
-  - [ ] `src/lib/axios.ts` — portal backend calls
-  - [ ] `src/contexts/supabase-context.tsx` — initialize tenant Supabase client from JWT claims
-  - [ ] `useTenantSupabase()` hook
+- [x] **CLI-18** Set up axios client + Supabase context
+  - [x] `src/lib/axios.ts` — portal backend calls
+  - [x] `src/contexts/supabase-context.tsx` — initialize tenant Supabase client from JWT claims
+  - [x] `useTenantSupabase()` hook
 
-- [ ] **CLI-19** Set up auth context + routes
-  - [ ] `auth-context.tsx` with `tenant_id` claim
-  - [ ] `routes.tsx` with `ProtectedRoute` + `GuestRoute` guards
+- [x] **CLI-19** Set up auth context + routes
+  - [x] `auth-context.tsx` with `tenant_id` claim
+  - [x] `routes.tsx` with `ProtectedRoute` + `GuestRoute` guards
 
-- [ ] **CLI-20** Design: Connect (onboarding) page (Variants)
-  - [ ] Clean centered layout
-  - [ ] Token field + email field
-  - [ ] Three states: form / sending / check-your-email
+- [x] **CLI-20** Design: Connect (onboarding) page (Variants)
+  - [x] Clean centered layout
+  - [x] Token field + email field
+  - [x] Three states: form / sending / check-your-email
 
 - [ ] **CLI-21** Build: Onboarding flow UI
   - [ ] `ConnectPage`, `ConnectForm`, `CheckEmailScreen`
