@@ -97,9 +97,9 @@
 
 ## Cycle 3 · M3: Frontend Shell + Onboarding UI
 
-- [ ] **CLI-17** Set up React + Vite + TypeScript project
-  - [ ] Same dependencies as agency-hub `web/`
-  - [ ] Add: Supabase JS client, Tiptap + extensions
+- [x] **CLI-17** Set up React + Vite + TypeScript project
+  - [x] Same dependencies as agency-hub `web/`
+  - [x] Add: Supabase JS client, Tiptap + extensions
 
 - [ ] **CLI-18** Set up axios client + Supabase context
   - [ ] `src/lib/axios.ts` — portal backend calls

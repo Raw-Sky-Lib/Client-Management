@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/* ─── Portal design tokens (light theme) ───────────────────────────────────
+   Contrast to agency-hub's dark theme. All colours reference these tokens
+   so a future dark-mode toggle only needs to swap :root values.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg-page:       #f8f8f9;
+  --bg-surface:    #ffffff;
+  --bg-subtle:     #f3f4f6;
+  --bg-hover:      #f0f0f2;
+
+  /* Borders */
+  --border:        #e5e7eb;
+  --border-strong: #d1d5db;
+
+  /* Text */
+  --text-primary:   #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary:  #9ca3af;
+  --text-inverse:   #ffffff;
+
+  /* Brand / accent */
+  --accent:           #6366f1;
+  --accent-hover:     #4f46e5;
+  --accent-subtle:    #eef2ff;
+  --accent-border:    #c7d2fe;
+
+  /* Status */
+  --success:        #16a34a;
+  --success-subtle: #f0fdf4;
+  --warning:        #d97706;
+  --warning-subtle: #fffbeb;
+  --danger:         #dc2626;
+  --danger-subtle:  #fef2f2;
+
+  /* Sidebar */
+  --sidebar-bg:     #ffffff;
+  --sidebar-width:  240px;
+
+  /* Topbar */
+  --topbar-height:  56px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+
+  /* Typography */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+
+/* ─── Base reset ──────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+#root {
+  min-height: 100svh;
+}
