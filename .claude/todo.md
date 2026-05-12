@@ -121,37 +121,37 @@
   - [x] Adapted from Variants design (CLI-20)
   - [x] Depends on: CLI-19, CLI-20
 
-- [ ] **CLI-22** Design: Portal shell — sidebar + header (Variants)
-  - [ ] Sidebar: logo, nav items (Dashboard, Pages, Blog, Media, Forms, Settings, Assistant)
-  - [ ] Header: page title, "View Site →" link, user dropdown
-  - [ ] Light theme (contrast to agency-hub dark)
+- [x] **CLI-22** Design: Portal shell — sidebar + header (Variants)
+  - [x] Sidebar: logo, nav items (Dashboard, Pages, Blog, Media, Forms, Settings, Assistant)
+  - [x] Header: page title, "View Site →" link, user dropdown
+  - [x] Light theme (contrast to agency-hub dark)
 
-- [ ] **CLI-23** Build: PortalLayout + sidebar + header
-  - [ ] `PortalLayout`, `PortalSidebar`, `PortalHeader`
-  - [ ] Active route highlighting, mobile responsive collapse
-  - [ ] Adapted from Variants design (CLI-22)
-  - [ ] Depends on: CLI-19, CLI-22
+- [x] **CLI-23** Build: PortalLayout + sidebar + header
+  - [x] `PortalLayout`, `PortalSidebar`, `PortalHeader`
+  - [x] Active route highlighting, mobile responsive collapse
+  - [x] Branded breadcrumb: tenant site hostname + current page title
+  - [x] Depends on: CLI-19, CLI-22
 
 ---
 
 ## Cycle 4 · M4: Page & Section Editors
 
-- [ ] **CLI-24** Design: Pages list + page editor layout (Variants)
-  - [ ] Pages list table: slug, title, status, last updated
-  - [ ] Page editor: section list on left, active editor on right (or stacked)
-  - [ ] Section editor: labeled fields + save button + save indicator
-  - [ ] Show 3 section types: Hero, Features, Testimonials
+- [x] **CLI-24** Design: Pages list + page editor layout (Variants)
+  - [x] Pages list table: slug, title, status, last updated
+  - [x] Built directly from existing design language (no Variants step)
 
-- [ ] **CLI-25** Build: Pages list + page selector
-  - [ ] `PagesListPage`, `PagesList`
-  - [ ] Depends on: CLI-23, CLI-24
+- [x] **CLI-25** Build: Pages list + page selector
+  - [x] `PagesListPage` — loads pages from client Supabase, table with title/slug/status/updated
+  - [x] `usePages()` hook — TanStack Query, selects only list columns
+  - [x] Loading skeletons, empty state, error state
+  - [x] Depends on: CLI-23, CLI-24
 
-- [ ] **CLI-26** Build: Section editor framework + Hero editor
-  - [ ] `PageEditorPage`, `SectionEditor` (type dispatcher), `HeroEditor`
+- [ ] **CLI-26** Build: Page editor + section framework + all section editors
+  - [ ] `PageEditorPage`, `SectionEditor` (data-driven, not hardcoded types)
   - [ ] `SaveIndicator` (idle / saving / saved / error — auto-clears after 2s)
   - [ ] `SectionPublishToggle`
+  - [ ] All section editors: Hero, Features, About, Testimonials, CTA
   - [ ] Save: write to client Supabase → trigger ISR via portal backend
-  - [ ] Adapted from Variants design (CLI-24)
   - [ ] Depends on: CLI-25, CLI-12
 
 - [ ] **CLI-27** Build: Remaining section editors
