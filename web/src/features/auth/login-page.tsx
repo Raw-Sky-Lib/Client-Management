@@ -6,7 +6,6 @@ import { z } from 'zod'
 import { useNavigate } from 'react-router'
 import { AgencyBadge } from '@/components/ui/agency-badge'
 import { HardShadowCard } from '@/components/ui/hard-shadow-card'
-import { CheckEmailScreen } from '@/features/onboarding/check-email-screen'
 import { cn } from '@/lib/utils'
 import api from '@/lib/axios'
 import { useAuth } from '@/contexts/auth-context'
@@ -19,7 +18,7 @@ const passwordSchema = z.object({
 })
 type PasswordValues = z.infer<typeof passwordSchema>
 
-function PasswordForm({ onMagicLink }: { onMagicLink: () => void }) {
+function PasswordForm({ onReset }: { onReset: () => void }) {
   const [formError, setFormError] = useState<string | null>(null)
   const { refresh } = useAuth()
   const navigate    = useNavigate()
@@ -133,11 +132,11 @@ function PasswordForm({ onMagicLink }: { onMagicLink: () => void }) {
 
           <button
             type="button"
-            onClick={onMagicLink}
+            onClick={onReset}
             disabled={isSubmitting}
             className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
           >
-            Forgot password? Send a sign-in link instead →
+            Forgot password? Reset it →
           </button>
         </div>
 
@@ -152,48 +151,74 @@ function PasswordForm({ onMagicLink }: { onMagicLink: () => void }) {
   )
 }
 
-// ─── Magic link fallback form ─────────────────────────────────────────────────
+// ─── Reset password request form ──────────────────────────────────────────────
 
-const magicLinkSchema = z.object({
+const emailSchema = z.object({
   email: z.string().email('Enter a valid email address'),
 })
-type MagicLinkValues = z.infer<typeof magicLinkSchema>
+type EmailValues = z.infer<typeof emailSchema>
 
-function MagicLinkForm({
-  onSuccess,
-  onBack,
-}: {
-  onSuccess: (email: string) => void
-  onBack: () => void
-}) {
+function ResetRequestForm({ onBack }: { onBack: () => void }) {
+  const [sent, setSent]         = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<MagicLinkValues>({
-    resolver: zodResolver(magicLinkSchema),
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<EmailValues>({
+    resolver: zodResolver(emailSchema),
   })
 
-  async function onSubmit(values: MagicLinkValues) {
+  async function onSubmit(values: EmailValues) {
     setFormError(null)
     try {
-      await api.post('/api/auth/magic-link', { email: values.email })
-      onSuccess(values.email)
+      await api.post('/api/auth/reset-password/request', { email: values.email })
+      setSent(true)
     } catch (err) {
       if (isAxiosError(err)) {
         const msg = err.response?.data?.error as string
-        setFormError(msg || 'Something went wrong. Please try again.')
+        if (err.response?.status === 429) {
+          setFormError(msg || 'Please wait a moment before requesting another reset link.')
+        } else {
+          setFormError(msg || 'Something went wrong. Please try again.')
+        }
       } else {
         setFormError('Something went wrong. Please try again.')
       }
     }
   }
 
+  if (sent) {
+    return (
+      <HardShadowCard>
+        <div className="px-8 pt-7 pb-5 border-b-2 border-ink">
+          <h2 className="font-sans font-extrabold text-[1.75rem] leading-tight tracking-tight text-ink">
+            Check your inbox.
+          </h2>
+          <p className="font-mono text-sm text-ink opacity-60 mt-1">
+            If that email is registered, a reset link is on its way.
+          </p>
+        </div>
+        <div className="px-8 py-7 flex flex-col gap-5">
+          <p className="font-mono text-sm text-ink opacity-60 leading-relaxed">
+            Click the link in the email to choose a new password. It expires in 1 hour.
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </HardShadowCard>
+    )
+  }
+
   return (
     <HardShadowCard>
       <div className="px-8 pt-7 pb-5 border-b-2 border-ink">
         <h2 className="font-sans font-extrabold text-[1.75rem] leading-tight tracking-tight text-ink">
-          Sign-in link.
+          Reset password.
         </h2>
         <p className="font-mono text-sm text-ink opacity-60 mt-1">
-          We'll email you a one-time link to sign in without a password.
+          Enter your email and we'll send you a reset link.
         </p>
       </div>
 
@@ -240,7 +265,7 @@ function MagicLinkForm({
               </>
             ) : (
               <>
-                Send Sign-In Link
+                Send Reset Link
                 <span className="text-xl leading-none">⇲</span>
               </>
             )}
@@ -252,7 +277,7 @@ function MagicLinkForm({
             disabled={isSubmitting}
             className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
           >
-            ← Back to password login
+            ← Back to sign in
           </button>
         </div>
       </form>
@@ -263,9 +288,7 @@ function MagicLinkForm({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function LoginPage() {
-  const [mode, setMode]   = useState<'password' | 'magic-link'>('password')
-  const [view, setView]   = useState<'form' | 'check-email'>('form')
-  const [email, setEmail] = useState('')
+  const [mode, setMode] = useState<'password' | 'reset'>('password')
 
   return (
     <div className="min-h-svh bg-cream flex flex-col items-center justify-center p-8 gap-8">
@@ -276,15 +299,10 @@ export function LoginPage() {
       </div>
 
       <div className="w-full max-w-md">
-        {view === 'check-email' ? (
-          <CheckEmailScreen email={email} variant="login" />
-        ) : mode === 'password' ? (
-          <PasswordForm onMagicLink={() => setMode('magic-link')} />
+        {mode === 'password' ? (
+          <PasswordForm onReset={() => setMode('reset')} />
         ) : (
-          <MagicLinkForm
-            onSuccess={(e) => { setEmail(e); setView('check-email') }}
-            onBack={() => setMode('password')}
-          />
+          <ResetRequestForm onBack={() => setMode('password')} />
         )}
       </div>
 

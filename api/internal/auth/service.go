@@ -134,6 +134,7 @@ func (s *Service) verifyPassword(ctx context.Context, supabaseURL, anonKey, emai
 }
 
 // SetUserPassword updates the user's password in Supabase Auth via the Admin API.
+// Called from the authenticated set-password endpoint (welcome page).
 func (s *Service) SetUserPassword(ctx context.Context, tenantID, userID, password string) error {
 	tenant, err := s.repo.GetTenantByID(ctx, tenantID)
 	if err != nil {
@@ -142,7 +143,6 @@ func (s *Service) SetUserPassword(ctx context.Context, tenantID, userID, passwor
 	if tenant == nil {
 		return fmt.Errorf("tenant not found")
 	}
-
 	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt url: %w", err)
@@ -151,7 +151,10 @@ func (s *Service) SetUserPassword(ctx context.Context, tenantID, userID, passwor
 	if err != nil {
 		return fmt.Errorf("decrypt service role: %w", err)
 	}
+	return s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password)
+}
 
+func (s *Service) updateSupabasePassword(ctx context.Context, supabaseURL, serviceRoleKey, userID, password string) error {
 	body, _ := json.Marshal(map[string]string{"password": password})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
 		supabaseURL+"/auth/v1/admin/users/"+userID, bytes.NewReader(body))
@@ -164,14 +167,105 @@ func (s *Service) SetUserPassword(ctx context.Context, tenantID, userID, passwor
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("supabase update: %w", err)
+		return fmt.Errorf("supabase update password: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("supabase update password status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// RequestPasswordReset generates a reset token and emails a password reset link.
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	tenant, err := s.repo.GetTenantByEmail(ctx, email)
+	if err != nil {
+		return fmt.Errorf("lookup tenant: %w", err)
+	}
+	if tenant == nil {
+		slog.Info("password reset requested for unregistered email", slog.String("email", email))
+		return nil
+	}
+	plaintext, hash, err := generateToken()
+	if err != nil {
+		return fmt.Errorf("generate token: %w", err)
+	}
+	if err := s.repo.StoreLoginToken(ctx, tenant.TenantID, email, hash, time.Now().Add(time.Hour)); err != nil {
+		return fmt.Errorf("store reset token: %w", err)
+	}
+	link := fmt.Sprintf("%s/api/auth/reset-password/verify?token=%s", s.publicURL, plaintext)
+	return s.mailer.Send(context.Background(), email,
+		"Reset your password",
+		fmt.Sprintf(`
+			<p>You requested a password reset for your client dashboard.</p>
+			<p><a href="%s">Reset password →</a></p>
+			<p>This link expires in 1 hour. If you didn't request this, you can safely ignore it.</p>
+		`, link),
+	)
+}
+
+// ValidateResetToken checks a reset token is valid without consuming it.
+// Used by the GET /verify redirect — the token is passed to the frontend for the confirm step.
+func (s *Service) ValidateResetToken(ctx context.Context, token string) (bool, error) {
+	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
+	if err != nil {
+		return false, fmt.Errorf("lookup token: %w", err)
+	}
+	if rec == nil || rec.UsedAt != nil || time.Now().After(rec.ExpiresAt) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// ConfirmPasswordReset validates the token, sets the new password, and issues a portal JWT.
+func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password string) (*PortalClaims, error) {
+	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
+	if err != nil {
+		return nil, fmt.Errorf("lookup token: %w", err)
+	}
+	if rec == nil || rec.UsedAt != nil || time.Now().After(rec.ExpiresAt) {
+		return nil, ErrInvalidToken
+	}
+
+	tenant, err := s.repo.GetTenantByID(ctx, rec.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup tenant: %w", err)
+	}
+	if tenant == nil {
+		return nil, ErrInvalidToken
+	}
+
+	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt url: %w", err)
+	}
+	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt anon: %w", err)
+	}
+	serviceRoleKey, err := utils.DecryptString(tenant.SREnc, s.encKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt service role: %w", err)
+	}
+
+	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, rec.Email)
+	if err != nil {
+		return nil, fmt.Errorf("get supabase user: %w", err)
+	}
+	if err := s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password); err != nil {
+		return nil, fmt.Errorf("update password: %w", err)
+	}
+	if err := s.repo.MarkLoginTokenUsed(ctx, rec.ID); err != nil {
+		return nil, fmt.Errorf("mark used: %w", err)
+	}
+
+	return &PortalClaims{
+		UserID:                userID,
+		TenantID:              rec.TenantID,
+		Email:                 rec.Email,
+		ClientSupabaseURL:     supabaseURL,
+		ClientSupabaseAnonKey: anonKey,
+	}, nil
 }
 
 // IssueTokenPair implements JWTIssuer — called by the onboarding handler after Confirm.

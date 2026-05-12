@@ -7,6 +7,7 @@ import { WelcomePage } from '@/features/onboarding/welcome-page'
 import { LinkErrorPage } from '@/features/onboarding/link-error-page'
 import { LoginPage } from '@/features/auth/login-page'
 import { AuthCallbackPage } from '@/features/auth/auth-callback-page'
+import { ResetPasswordPage } from '@/features/auth/reset-password-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -40,6 +41,12 @@ export const router = createBrowserRouter([
   {
     path: '/link-error',
     element: <LinkErrorPage />,
+  },
+
+  // Reset password — public, token comes from reset email link
+  {
+    path: '/reset-password',
+    element: <ResetPasswordPage />,
   },
 
   // ─── Protected routes ─────────────────────────────────────────────────────

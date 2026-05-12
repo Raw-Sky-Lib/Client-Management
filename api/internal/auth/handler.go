@@ -252,6 +252,101 @@ func (h *Handler) CSRF(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, CSRFResponse{CSRFToken: token})
 }
 
+// ResetPasswordRequest handles POST /api/auth/reset-password/request
+//
+// @Summary     Request a password reset link
+// @Description Generates a reset token and emails a link. Always returns 200 to prevent email enumeration.
+// @Tags        auth
+// @Accept      json
+// @Produce     json
+// @Param       X-CSRF-Token header string true "CSRF token"
+// @Param       body         body   MagicLinkRequest true "Email address"
+// @Success     200 {object} utils.MessageResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     403 {object} utils.ErrorResponse
+// @Router      /api/auth/reset-password/request [post]
+func (h *Handler) ResetPasswordRequest(w http.ResponseWriter, r *http.Request) {
+	var req MagicLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "a valid email is required")
+		return
+	}
+	if err := h.svc.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "something went wrong, please try again")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]string{
+		"message": "If that email is registered, you'll receive a reset link shortly.",
+	})
+}
+
+// ResetPasswordVerify handles GET /api/auth/reset-password/verify
+//
+// @Summary     Validate a reset token and redirect to the reset page
+// @Description Called when the user clicks the password reset email link. Validates the token and redirects to the frontend reset page with the token as a query param.
+// @Tags        auth
+// @Param       token query string true "Reset token"
+// @Success     307 "Redirect to /reset-password?token=..."
+// @Failure     307 "Redirect to /link-error on invalid/expired token"
+// @Router      /api/auth/reset-password/verify [get]
+func (h *Handler) ResetPasswordVerify(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=invalid", http.StatusTemporaryRedirect)
+		return
+	}
+	valid, err := h.svc.ValidateResetToken(r.Context(), token)
+	if err != nil || !valid {
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=invalid", http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, h.frontendURL+"/reset-password?token="+token, http.StatusTemporaryRedirect)
+}
+
+// ResetPasswordConfirm handles POST /api/auth/reset-password/confirm
+//
+// @Summary     Confirm password reset
+// @Description Validates the reset token, sets the new password in Supabase, and issues portal JWT cookies so the user is immediately signed in.
+// @Tags        auth
+// @Accept      json
+// @Produce     json
+// @Param       X-CSRF-Token header string true "CSRF token"
+// @Param       body         body   ResetPasswordConfirmRequest true "Token and new password"
+// @Success     200 {object} utils.OKResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse "Invalid or expired token"
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/auth/reset-password/confirm [post]
+func (h *Handler) ResetPasswordConfirm(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordConfirmRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "token and a password of at least 8 characters are required")
+		return
+	}
+	claims, err := h.svc.ConfirmPasswordReset(r.Context(), req.Token, req.Password)
+	if err != nil {
+		if errors.Is(err, ErrInvalidToken) {
+			utils.RespondError(w, http.StatusUnauthorized, "this reset link is invalid or has expired")
+			return
+		}
+		utils.RespondError(w, http.StatusInternalServerError, "could not reset password, please try again")
+		return
+	}
+	if err := h.svc.IssueTokenPair(w, claims); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // LoginVerify handles GET /api/auth/login/verify
 //
 // @Summary     Verify portal magic-link token

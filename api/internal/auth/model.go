@@ -44,6 +44,12 @@ type SetPasswordRequest struct {
 	Password string `json:"password" validate:"required,min=8" example:"mypassword123"`
 }
 
+// ResetPasswordConfirmRequest is the body for POST /api/auth/reset-password/confirm.
+type ResetPasswordConfirmRequest struct {
+	Token    string `json:"token"    validate:"required"       example:"abc123..."`
+	Password string `json:"password" validate:"required,min=8" example:"mypassword123"`
+}
+
 // ExchangeRequest is the body for POST /api/auth/exchange.
 type ExchangeRequest struct {
 	AccessToken string `json:"access_token" validate:"required" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
