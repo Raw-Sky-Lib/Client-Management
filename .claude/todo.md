@@ -115,11 +115,11 @@
   - [x] Token field + email field
   - [x] Three states: form / sending / check-your-email
 
-- [ ] **CLI-21** Build: Onboarding flow UI
-  - [ ] `ConnectPage`, `ConnectForm`, `CheckEmailScreen`
-  - [ ] Error states: expired token / invalid token / already used
-  - [ ] Adapted from Variants design (CLI-20)
-  - [ ] Depends on: CLI-19, CLI-20
+- [x] **CLI-21** Build: Onboarding flow UI
+  - [x] `ConnectPage`, `ConnectForm`, `CheckEmailScreen`
+  - [x] Error states: expired token / invalid token / already used
+  - [x] Adapted from Variants design (CLI-20)
+  - [x] Depends on: CLI-19, CLI-20
 
 - [ ] **CLI-22** Design: Portal shell — sidebar + header (Variants)
   - [ ] Sidebar: logo, nav items (Dashboard, Pages, Blog, Media, Forms, Settings, Assistant)

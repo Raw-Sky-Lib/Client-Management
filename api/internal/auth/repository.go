@@ -24,6 +24,7 @@ type TenantLookup struct {
 	URLEnc   string
 	AnonEnc  string
 	SREnc    string
+	SiteURL  string
 }
 
 type Repository struct {
@@ -37,11 +38,11 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 func (r *Repository) GetTenantByEmail(ctx context.Context, email string) (*TenantLookup, error) {
 	t := &TenantLookup{}
 	err := r.db.QueryRow(ctx, `
-		SELECT tu.tenant_id, t.supabase_url_encrypted, t.supabase_anon_encrypted, t.supabase_service_role_encrypted
+		SELECT tu.tenant_id, t.supabase_url_encrypted, t.supabase_anon_encrypted, t.supabase_service_role_encrypted, COALESCE(t.site_url, '')
 		FROM tenant_users tu
 		JOIN tenants t ON t.id = tu.tenant_id
 		WHERE tu.email = $1
-	`, email).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc)
+	`, email).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc, &t.SiteURL)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -89,9 +90,9 @@ func (r *Repository) MarkLoginTokenUsed(ctx context.Context, id string) error {
 func (r *Repository) GetTenantByID(ctx context.Context, tenantID string) (*TenantLookup, error) {
 	t := &TenantLookup{}
 	err := r.db.QueryRow(ctx, `
-		SELECT id, supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted
+		SELECT id, supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted, COALESCE(site_url, '')
 		FROM tenants WHERE id = $1
-	`, tenantID).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc)
+	`, tenantID).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc, &t.SiteURL)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
