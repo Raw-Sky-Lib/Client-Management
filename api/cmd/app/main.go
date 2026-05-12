@@ -23,6 +23,7 @@ import (
 	"github.com/DagMT/client-portal/internal/claude"
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
+	"github.com/DagMT/client-portal/internal/mailer"
 	"github.com/DagMT/client-portal/internal/middleware"
 	"github.com/DagMT/client-portal/internal/onboarding"
 	"github.com/DagMT/client-portal/internal/revalidate"
@@ -33,7 +34,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/redis/go-redis/v9"
-	"github.com/resend/resend-go/v2"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
@@ -86,17 +86,21 @@ func main() {
 	}
 	logger.Trace("encryption key derived")
 
-	resendClient := resend.NewClient(cfg.ResendAPIKey)
 	secure := cfg.Environment == "production"
-	logger.Trace("Resend client initialized")
+
+	m, err := mailer.New(cfg.MailerProvider, cfg.EmailFrom, cfg.ResendAPIKey, cfg.BrevoSMTPUser, cfg.BrevoSMTPKey)
+	if err != nil {
+		logger.Fatal("mailer init failed", slog.String("Error", err.Error()))
+	}
+	logger.Trace("mailer ready", slog.String("Provider", cfg.MailerProvider))
 
 	logger.Trace("wiring auth feature")
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(
-		authRepo, httpClient, resendClient, cfg.ResendFrom, cfg.FrontendURL,
+		authRepo, httpClient, m, cfg.FrontendURL, cfg.PublicURL,
 		encKey, cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry, secure,
 	)
-	authHandler := auth.NewHandler(authSvc, secure)
+	authHandler := auth.NewHandler(authSvc, secure, cfg.FrontendURL)
 	logger.Trace("auth feature ready")
 
 	logger.Trace("wiring tenant feature")
@@ -120,7 +124,7 @@ func main() {
 	logger.Trace("wiring onboarding feature")
 	onboardRepo := onboarding.NewRepository(pool)
 	onboardSvc := onboarding.NewService(
-		onboardRepo, httpClient, resendClient, cfg.ResendFrom,
+		onboardRepo, httpClient, m,
 		cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID,
 		encKey, cfg.PublicURL, cfg.FrontendURL,
 	)
@@ -131,6 +135,7 @@ func main() {
 	r := chi.NewRouter()
 
 	// Global middleware
+	r.Use(middleware.CORS(cfg.FrontendURL)) // must be first — answers OPTIONS before auth/CSRF
 	r.Use(chimiddleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Security)
@@ -172,7 +177,8 @@ func main() {
 		r.Route("/api/onboarding", onboarding.Routes(onboardHandler, rdb))
 		r.Route("/api/auth", auth.Routes(
 			authHandler,
-			middleware.RateLimit(rdb, "magic_link", 5, time.Minute),
+			middleware.RateLimit(rdb, "magic_link", 1, 2*time.Minute,
+				"Please wait 2 minutes before requesting another sign-in link."),
 			middleware.Authenticate(cfg.JWTSecret),
 		))
 

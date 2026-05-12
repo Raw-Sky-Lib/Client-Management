@@ -13,7 +13,12 @@ import (
 
 // RateLimit is a sliding-window rate limiter keyed by keyPrefix + client IP.
 // Fails open on Redis errors so a Redis outage never blocks requests.
-func RateLimit(rdb *redis.Client, keyPrefix string, requests int, window time.Duration) func(http.Handler) http.Handler {
+// An optional message parameter overrides the default 429 response text.
+func RateLimit(rdb *redis.Client, keyPrefix string, requests int, window time.Duration, message ...string) func(http.Handler) http.Handler {
+	msg := "too many requests — please wait before trying again"
+	if len(message) > 0 && message[0] != "" {
+		msg = message[0]
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := realIP(r)
@@ -35,7 +40,7 @@ func RateLimit(rdb *redis.Client, keyPrefix string, requests int, window time.Du
 
 			if countCmd.Val() > int64(requests) {
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds())))
-				utils.RespondError(w, http.StatusTooManyRequests, "too many requests")
+				utils.RespondError(w, http.StatusTooManyRequests, msg)
 				return
 			}
 

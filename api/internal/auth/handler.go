@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/DagMT/client-portal/internal/utils"
@@ -11,17 +12,96 @@ import (
 )
 
 type Handler struct {
-	svc      *Service
-	validate *validator.Validate
-	secure   bool
+	svc         *Service
+	validate    *validator.Validate
+	secure      bool
+	frontendURL string
 }
 
-func NewHandler(svc *Service, secure bool) *Handler {
+func NewHandler(svc *Service, secure bool, frontendURL string) *Handler {
 	return &Handler{
-		svc:      svc,
-		validate: validator.New(),
-		secure:   secure,
+		svc:         svc,
+		validate:    validator.New(),
+		secure:      secure,
+		frontendURL: frontendURL,
 	}
+}
+
+// Login handles POST /api/auth/login
+//
+// @Summary     Password login
+// @Description Verifies email and password against the client's Supabase project, then sets portal JWT cookies.
+// @Tags        auth
+// @Accept      json
+// @Produce     json
+// @Param       X-CSRF-Token header string true "CSRF token"
+// @Param       body         body   PasswordLoginRequest true "Credentials"
+// @Success     200 {object} utils.OKResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse "Wrong email or password"
+// @Failure     403 {object} utils.ErrorResponse "Missing or invalid CSRF token"
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/auth/login [post]
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req PasswordLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+	claims, err := h.svc.LoginWithPassword(r.Context(), req.Email, req.Password)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			utils.RespondError(w, http.StatusUnauthorized, "incorrect email or password")
+			return
+		}
+		utils.RespondError(w, http.StatusInternalServerError, "something went wrong, please try again")
+		return
+	}
+	if err := h.svc.IssueTokenPair(w, claims); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// SetPassword handles POST /api/auth/set-password (authenticated)
+//
+// @Summary     Set user password
+// @Description Sets the authenticated user's password in their Supabase project. Called from the welcome page after first onboarding.
+// @Tags        auth
+// @Accept      json
+// @Produce     json
+// @Param       X-CSRF-Token header string true "CSRF token"
+// @Param       body         body   SetPasswordRequest true "New password (min 8 chars)"
+// @Success     200 {object} utils.OKResponse
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/auth/set-password [post]
+func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
+	claims, ok := ClaimsFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req SetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	if err := h.svc.SetUserPassword(r.Context(), claims.TenantID, claims.UserID, req.Password); err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, "could not set password, please try again")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // MagicLink handles POST /api/auth/magic-link
@@ -170,6 +250,33 @@ func (h *Handler) CSRF(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 	utils.RespondJSON(w, http.StatusOK, CSRFResponse{CSRFToken: token})
+}
+
+// LoginVerify handles GET /api/auth/login/verify
+//
+// @Summary     Verify portal magic-link token
+// @Description Called when the user clicks the sign-in link from their email. Validates the token, sets portal JWT cookies, and redirects to the dashboard.
+// @Tags        auth
+// @Param       token query string true "Portal magic-link token"
+// @Success     307 "Redirect to /dashboard"
+// @Failure     307 "Redirect to /link-error on invalid/expired token"
+// @Router      /api/auth/login/verify [get]
+func (h *Handler) LoginVerify(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=invalid", http.StatusTemporaryRedirect)
+		return
+	}
+	claims, err := h.svc.VerifyLoginToken(r.Context(), token)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=invalid", http.StatusTemporaryRedirect)
+		return
+	}
+	if err := h.svc.IssueTokenPair(w, claims); err != nil {
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=error", http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, h.frontendURL+"/dashboard", http.StatusTemporaryRedirect)
 }
 
 // Profile handles GET /api/auth/profile

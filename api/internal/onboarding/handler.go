@@ -3,6 +3,7 @@ package onboarding
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -58,6 +59,7 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 		if isUserFacingErr(err) {
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 		} else {
+			slog.Error("onboarding connect failed", "error", err)
 			utils.RespondError(w, http.StatusInternalServerError, "something went wrong, please try again")
 		}
 		return
@@ -81,23 +83,70 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		utils.RespondError(w, http.StatusBadRequest, "missing token")
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=invalid", http.StatusTemporaryRedirect)
 		return
 	}
 	claims, err := h.svc.Confirm(r.Context(), token)
 	if err != nil {
-		if isUserFacingErr(err) {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-		} else {
-			utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		reason := "error"
+		switch {
+		case errors.Is(err, ErrLinkUsed):
+			reason = "used"
+		case errors.Is(err, ErrLinkExpired):
+			reason = "expired"
+		case errors.Is(err, ErrLinkInvalid):
+			reason = "invalid"
 		}
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason="+reason, http.StatusTemporaryRedirect)
 		return
 	}
 	if err := h.jwtIssuer.IssueTokenPair(w, claims); err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		http.Redirect(w, r, h.frontendURL+"/link-error?reason=error", http.StatusTemporaryRedirect)
 		return
 	}
-	http.Redirect(w, r, h.frontendURL+"/dashboard", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, h.frontendURL+"/welcome", http.StatusTemporaryRedirect)
+}
+
+// ResendInvite handles POST /api/admin/resend-invite
+//
+// @Summary     Resend onboarding invite email
+// @Description Generates a fresh invite token and resends the onboarding email. Called by agency-hub when a client reports a broken or expired link.
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Param       Authorization header string true "Bearer {AGENCY_MANAGEMENT_TOKEN}"
+// @Param       body          body   ResendInviteRequest true "Client ID and email"
+// @Success     200 {object} map[string]bool
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     404 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/admin/resend-invite [post]
+func (h *Handler) ResendInvite(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req ResendInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.ResendInvite(r.Context(), req.ClientID, req.Email); err != nil {
+		if errors.Is(err, ErrClientNotSetup) {
+			utils.RespondError(w, http.StatusNotFound, "client not registered in portal")
+		} else {
+			slog.Error("resend invite failed", "error", err)
+			utils.RespondError(w, http.StatusInternalServerError, "failed to resend invite")
+		}
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"sent": true})
 }
 
 // RegisterClient handles POST /api/admin/register-client
@@ -130,7 +179,8 @@ func (h *Handler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.RegisterClient(r.Context(), req); err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, "registration failed")
+		slog.Error("register client failed", "error", err)
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	utils.RespondJSON(w, http.StatusCreated, map[string]bool{"registered": true})

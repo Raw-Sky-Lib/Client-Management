@@ -7,7 +7,7 @@ export function ProtectedRoute() {
 
   if (isLoading) return null
 
-  if (!user) return <Navigate to="/connect" replace />
+  if (!user) return <Navigate to="/login" replace />
 
   return (
     <SupabaseProvider supabaseUrl={user.supabase_url} supabaseAnonKey={user.supabase_anon_key}>

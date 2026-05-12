@@ -7,6 +7,7 @@ interface AuthContextValue {
   isLoading: boolean
   isAuthenticated: boolean
   logout: () => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -16,12 +17,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // Bootstrap a fresh CSRF cookie first so every subsequent mutation request works.
+    // If the access token is expired, the axios interceptor will silently refresh it
+    // before retrying the profile call — no magic link needed until the 7-day refresh
+    // token expires.
     api
-      .get<PortalUser>('/api/auth/profile')
+      .get('/api/auth/csrf')
+      .then(() => api.get<PortalUser>('/api/auth/profile'))
       .then((res) => setUser(res.data))
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false))
   }, [])
+
+  async function refresh() {
+    try {
+      const res = await api.get<PortalUser>('/api/auth/profile')
+      setUser(res.data)
+    } catch {
+      setUser(null)
+    }
+  }
 
   async function logout() {
     await api.post('/api/auth/logout').catch(() => null)
@@ -29,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: user !== null, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: user !== null, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

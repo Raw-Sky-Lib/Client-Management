@@ -33,6 +33,17 @@ type MagicLinkRequest struct {
 	Email string `json:"email" validate:"required,email" example:"client@example.com"`
 }
 
+// PasswordLoginRequest is the body for POST /api/auth/login.
+type PasswordLoginRequest struct {
+	Email    string `json:"email"    validate:"required,email" example:"client@example.com"`
+	Password string `json:"password" validate:"required"       example:"mypassword123"`
+}
+
+// SetPasswordRequest is the body for POST /api/auth/set-password.
+type SetPasswordRequest struct {
+	Password string `json:"password" validate:"required,min=8" example:"mypassword123"`
+}
+
 // ExchangeRequest is the body for POST /api/auth/exchange.
 type ExchangeRequest struct {
 	AccessToken string `json:"access_token" validate:"required" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`

@@ -43,6 +43,12 @@ func (r *Repository) TenantExists(ctx context.Context, clientID string) (bool, e
 }
 
 func (r *Repository) StoreEmailConfirmation(ctx context.Context, tenantID, email, hash string, expiresAt time.Time) error {
+	// Invalidate any previous unused tokens for this tenant+email so only the latest link works.
+	if _, err := r.db.Exec(ctx, `
+		DELETE FROM email_confirmations WHERE tenant_id = $1 AND email = $2 AND used_at IS NULL
+	`, tenantID, email); err != nil {
+		return err
+	}
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at)
 		VALUES ($1, $2, $3, $4)
