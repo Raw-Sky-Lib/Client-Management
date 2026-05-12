@@ -110,7 +110,7 @@
   - [x] `auth-context.tsx` with `tenant_id` claim
   - [x] `routes.tsx` with `ProtectedRoute` + `GuestRoute` guards
 
-- [x] **CLI-20** Design: Connect (onboarding) page (Variants)
+- [x] **CLI-20** Design: Connect (onboarding) page (Variants),
   - [x] Clean centered layout
   - [x] Token field + email field
   - [x] Three states: form / sending / check-your-email

@@ -8,21 +8,11 @@ import { HardShadowCard } from '@/components/ui/hard-shadow-card'
 import { cn } from '@/lib/utils'
 
 const schema = z.object({
-  access_code: z.string().min(1, 'Access code is required'),
-  email:       z.string().email('Enter a valid email address'),
+  connection_token: z.string().min(1, 'Access code is required'),
+  email:            z.string().email('Enter a valid email address'),
 })
 
 type FormValues = z.infer<typeof schema>
-
-const ERROR_MESSAGES: Record<string, string> = {
-  expired: 'Your access code has expired. Ask your website team for a new one.',
-  used:    'This access code has already been used. Contact your website team.',
-  invalid: 'Invalid access code. Check for typos and try again.',
-}
-
-function resolveError(raw: string): string {
-  return ERROR_MESSAGES[raw] ?? (raw || 'Something went wrong. Please try again.')
-}
 
 interface ConnectFormProps {
   onSuccess: (email: string) => void
@@ -41,14 +31,14 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
     setFormError(null)
     try {
       await api.post('/api/onboarding/connect', {
-        token: values.access_code,
-        email: values.email,
+        connection_token: values.connection_token,
+        email:            values.email,
       })
       onSuccess(values.email)
     } catch (err) {
       if (isAxiosError(err)) {
         const raw = (err.response?.data?.error ?? err.response?.data?.message ?? '') as string
-        setFormError(resolveError(raw))
+        setFormError(raw || 'Something went wrong. Please try again.')
       } else {
         setFormError('Something went wrong. Please try again.')
       }
@@ -61,7 +51,7 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
       {/* Card header */}
       <div className="px-10 pt-8 pb-6 border-b-2 border-ink">
         <h2 className="font-sans font-extrabold text-[2rem] leading-tight tracking-tight text-ink">
-          Connect your workspace.
+          Set up your dashboard.
         </h2>
         <p className="font-mono text-sm text-ink opacity-60 mt-1">
           Enter the access code your website team sent you.
@@ -81,20 +71,21 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
               Access Code
             </label>
             <input
-              {...register('access_code')}
+              {...register('connection_token')}
+              type="text"
               disabled={isSubmitting}
-              placeholder="xxxx-xxxx-xxxx"
+              placeholder="e.g. abc123def456"
               autoComplete="off"
               className={cn(
-                'w-full border-2 border-ink rounded-lg px-4 py-3 font-sans text-base text-ink bg-white',
+                'w-full border-2 border-ink rounded-lg px-4 py-3 font-mono text-base text-ink bg-white',
                 'placeholder:text-ink/30 outline-none',
                 'focus:ring-2 focus:ring-forest/20 focus:border-forest',
                 'disabled:opacity-50 transition',
-                errors.access_code && 'border-brand-red focus:ring-brand-red/20 focus:border-brand-red',
+                errors.connection_token && 'border-brand-red focus:ring-brand-red/20 focus:border-brand-red',
               )}
             />
-            {errors.access_code && (
-              <p className="font-mono text-xs text-brand-red">{errors.access_code.message}</p>
+            {errors.connection_token && (
+              <p className="font-mono text-xs text-brand-red">{errors.connection_token.message}</p>
             )}
           </div>
 
@@ -125,12 +116,11 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
 
         {/* Error banner */}
         {formError && (
-          <div className="border-2 border-brand-red rounded-lg px-4 py-3" style={{ backgroundColor: 'rgba(225,90,73,0.08)' }}>
+          <div className="border-2 border-brand-red rounded-lg px-4 py-3 bg-brand-red/8">
             <p className="font-mono text-xs text-brand-red">{formError}</p>
           </div>
         )}
 
-        {/* Push action bar to bottom */}
         <div className="flex-1" />
 
         {/* Action bar */}
@@ -143,15 +133,22 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
             {isSubmitting ? (
               <>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                Sending…
+                Verifying…
               </>
             ) : (
               <>
-                Connect to Portal
+                Verify Access Code
                 <span className="text-xl leading-none">⇲</span>
               </>
             )}
           </button>
+
+          <p className="font-mono text-xs text-ink opacity-40 text-center mt-4">
+            Already set up?{' '}
+            <a href="/login" className="underline opacity-70 hover:opacity-100 transition">
+              Sign in instead
+            </a>
+          </p>
         </div>
       </form>
     </HardShadowCard>

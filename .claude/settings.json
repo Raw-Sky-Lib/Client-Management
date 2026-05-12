@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite *)",
+      "Bash(kill 89244)",
+      "Bash(npm run *)",
+      "Bash(node --input-type=module --experimental-vm-modules /dev/null)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8081/api/onboarding/confirm?token=test\")",
+      "Bash(curl -s \"http://localhost:8081/api/onboarding/confirm?token=test\")",
+      "Bash(psql postgresql://postgres.tgysvlfdsxjglbneeulx:prodagencyhub@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require -c 'SELECT id, email, used_at, expires_at, created_at FROM email_confirmations ORDER BY created_at DESC LIMIT 5;')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8081/api/auth/login/verify?token=invalid123\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -X POST http://localhost:8081/api/admin/resend-invite -H \"Content-Type: application/json\" -H \"Authorization: Bearer wrongtoken\" -d '{\"client_id\":\"00000000-0000-0000-0000-000000000000\",\"email\":\"test@test.com\"}')",
+      "Bash(curl -s \"http://localhost:8081/api/auth/login/verify?token=testtoken123\" -w \"\\\\nStatus: %{http_code}\\\\nLocation: %{redirect_url}\" -o /dev/null)"
+    ]
+  }
+}

@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/DagMT/client-portal/internal/auth"
 	"github.com/DagMT/client-portal/internal/database"
+	"github.com/DagMT/client-portal/internal/mailer"
 	"github.com/DagMT/client-portal/internal/utils"
-	"github.com/resend/resend-go/v2"
 )
 
 var (
@@ -30,8 +32,7 @@ var (
 type Service struct {
 	repo           *Repository
 	httpClient     *http.Client
-	resend         *resend.Client
-	resendFrom     string
+	mailer         mailer.Mailer
 	agencyURL      string
 	agencyToken    string
 	agencyClientID string
@@ -43,8 +44,7 @@ type Service struct {
 func NewService(
 	repo *Repository,
 	httpClient *http.Client,
-	resendClient *resend.Client,
-	resendFrom string,
+	m mailer.Mailer,
 	agencyURL, agencyToken, agencyClientID string,
 	encKey []byte,
 	publicURL, frontendURL string,
@@ -52,8 +52,7 @@ func NewService(
 	return &Service{
 		repo:           repo,
 		httpClient:     httpClient,
-		resend:         resendClient,
-		resendFrom:     resendFrom,
+		mailer:         m,
 		agencyURL:      agencyURL,
 		agencyToken:    agencyToken,
 		agencyClientID: agencyClientID,
@@ -63,7 +62,22 @@ func NewService(
 	}
 }
 
+func (s *Service) ResendInvite(ctx context.Context, clientID, email string) error {
+	exists, err := s.repo.TenantExists(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("check tenant: %w", err)
+	}
+	if !exists {
+		return ErrClientNotSetup
+	}
+	return s.sendInvite(ctx, clientID, email)
+}
+
 func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest) error {
+	// Strip trailing /rest/v1 or /rest/v1/ that callers sometimes include.
+	req.ClientSupabaseURL = strings.TrimRight(strings.TrimSuffix(
+		strings.TrimRight(req.ClientSupabaseURL, "/"), "/rest/v1"), "/")
+
 	if err := utils.ValidateSupabaseCredentials(req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey); err != nil {
 		return fmt.Errorf("invalid supabase credentials: %w", err)
 	}
@@ -86,10 +100,34 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	if err != nil {
 		return err
 	}
-	return s.repo.UpsertTenant(ctx, req.ClientID, urlEnc, anonEnc, srEnc, dbEnc, req.SiteURL)
+	if err := s.repo.UpsertTenant(ctx, req.ClientID, urlEnc, anonEnc, srEnc, dbEnc, req.SiteURL); err != nil {
+		return err
+	}
+	// Auto-send invite email so the client can access their dashboard without a connection token.
+	return s.sendInvite(ctx, req.ClientID, req.Email)
+}
+
+func (s *Service) sendInvite(ctx context.Context, tenantID, email string) error {
+	plaintext, hash, err := generateToken()
+	if err != nil {
+		return fmt.Errorf("generate invite token: %w", err)
+	}
+	if err := s.repo.StoreEmailConfirmation(ctx, tenantID, email, hash, time.Now().Add(72*time.Hour)); err != nil {
+		return fmt.Errorf("store invite: %w", err)
+	}
+	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, plaintext)
+	return s.mailer.Send(ctx, email,
+		"Your dashboard is ready",
+		fmt.Sprintf(`
+			<p>Your client portal is set up and ready to use.</p>
+			<p><a href="%s">Access your dashboard →</a></p>
+			<p>This link expires in 72 hours. After that, you can sign in with a magic link from the login page.</p>
+		`, link),
+	)
 }
 
 func (s *Service) Connect(ctx context.Context, req ConnectRequest) error {
+	// Validate without consuming — token stays usable if a downstream step fails.
 	clientID, err := s.validateConnectionToken(ctx, req.ConnectionToken, req.Email)
 	if err != nil {
 		return err
@@ -108,7 +146,12 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) error {
 	if err := s.repo.StoreEmailConfirmation(ctx, clientID, req.Email, hash, time.Now().Add(24*time.Hour)); err != nil {
 		return fmt.Errorf("store confirmation: %w", err)
 	}
-	return s.sendConfirmationEmail(req.Email, plaintext)
+	// Send email before consuming — only burn the token after the email is out.
+	// If send fails, the stored confirmation expires naturally and the user can retry.
+	if err := s.sendConfirmationEmail(req.Email, plaintext); err != nil {
+		return fmt.Errorf("send confirmation email: %w", err)
+	}
+	return s.consumeConnectionToken(ctx, req.ConnectionToken, req.Email)
 }
 
 func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims, error) {
@@ -167,6 +210,28 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 	}, nil
 }
 
+func (s *Service) consumeConnectionToken(ctx context.Context, token, email string) error {
+	body, _ := json.Marshal(map[string]string{"token": token, "email": email})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		s.agencyURL+"/api/consume-connection-token", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.agencyToken)
+	req.Header.Set("X-Client-ID", s.agencyClientID)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("call agency-hub: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("consume token returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (s *Service) validateConnectionToken(ctx context.Context, token, email string) (string, error) {
 	body, _ := json.Marshal(map[string]string{"token": token, "email": email})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -186,7 +251,7 @@ func (s *Service) validateConnectionToken(ctx context.Context, token, email stri
 
 	var result validateTokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return "", fmt.Errorf("decode response (status %d): %w", resp.StatusCode, err)
 	}
 	if !result.Valid {
 		switch result.Reason {
@@ -226,6 +291,11 @@ func (s *Service) createSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 	}
 	defer resp.Body.Close()
 
+	// User already exists — look them up rather than failing.
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, email)
+	}
+
 	var result struct {
 		ID string `json:"id"`
 	}
@@ -238,19 +308,45 @@ func (s *Service) createSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 	return result.ID, nil
 }
 
+func (s *Service) getSupabaseUserByEmail(ctx context.Context, supabaseURL, serviceRoleKey, email string) (string, error) {
+	endpoint := supabaseURL + "/auth/v1/admin/users?email=" + url.QueryEscape(email) + "&per_page=1"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("build lookup request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+serviceRoleKey)
+	req.Header.Set("apikey", serviceRoleKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("supabase user lookup: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Users []struct {
+			ID string `json:"id"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode user list: %w", err)
+	}
+	if len(result.Users) == 0 || result.Users[0].ID == "" {
+		return "", fmt.Errorf("supabase user not found for email")
+	}
+	return result.Users[0].ID, nil
+}
+
 func (s *Service) sendConfirmationEmail(to, token string) error {
 	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, token)
-	_, err := s.resend.Emails.Send(&resend.SendEmailRequest{
-		From:    s.resendFrom,
-		To:      []string{to},
-		Subject: "Confirm your email to access your dashboard",
-		Html: fmt.Sprintf(`
+	return s.mailer.Send(context.Background(), to,
+		"Confirm your email to access your dashboard",
+		fmt.Sprintf(`
 			<p>Click the link below to access your dashboard:</p>
 			<p><a href="%s">Confirm your email →</a></p>
 			<p>This link expires in 24 hours.</p>
 		`, link),
-	})
-	return err
+	)
 }
 
 func generateToken() (plaintext, hash string, err error) {

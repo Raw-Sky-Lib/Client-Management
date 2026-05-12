@@ -34,8 +34,11 @@ type Config struct {
 	ClaudeDefaultMonthlyTokenBudget int
 
 	// Email
-	ResendAPIKey string
-	ResendFrom   string
+	MailerProvider string // "resend" or "brevo"
+	EmailFrom      string // from address, used by all providers
+	ResendAPIKey   string // required when MailerProvider=resend
+	BrevoSMTPUser  string // required when MailerProvider=brevo
+	BrevoSMTPKey   string // required when MailerProvider=brevo
 
 	// App
 	Environment string
@@ -59,8 +62,11 @@ func LoadConfig() (*Config, error) {
 		UpstashRedisURL:       os.Getenv("UPSTASH_REDIS_URL"),
 		AnthropicAPIKey:       os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicDefaultModel: envOrDefault("ANTHROPIC_DEFAULT_MODEL", "claude-haiku-4-5-20251001"),
-		ResendAPIKey:          os.Getenv("RESEND_API_KEY"),
-		ResendFrom:            os.Getenv("RESEND_FROM"),
+		MailerProvider: envOrDefault("MAILER_PROVIDER", "resend"),
+		EmailFrom:      envOrDefault("EMAIL_FROM", os.Getenv("RESEND_FROM")),
+		ResendAPIKey:   os.Getenv("RESEND_API_KEY"),
+		BrevoSMTPUser:  os.Getenv("BREVO_SMTP_USER"),
+		BrevoSMTPKey:   os.Getenv("BREVO_SMTP_KEY"),
 		Environment: envOrDefault("ENVIRONMENT", "development"),
 		PublicURL:   envOrDefault("PUBLIC_URL", "http://localhost:8081"),
 		FrontendURL: envOrDefault("FRONTEND_URL", "http://localhost:5174"),
@@ -93,13 +99,30 @@ func LoadConfig() (*Config, error) {
 		"JWT_SECRET":              cfg.JWTSecret,
 		"UPSTASH_REDIS_URL":       cfg.UpstashRedisURL,
 		"ANTHROPIC_API_KEY":       cfg.AnthropicAPIKey,
-		"RESEND_API_KEY":          cfg.ResendAPIKey,
-		"RESEND_FROM":             cfg.ResendFrom,
 	}
 	for name, val := range required {
 		if val == "" {
 			return nil, fmt.Errorf("required env var %s is not set", name)
 		}
+	}
+
+	if cfg.EmailFrom == "" {
+		return nil, fmt.Errorf("required env var EMAIL_FROM (or RESEND_FROM) is not set")
+	}
+	switch cfg.MailerProvider {
+	case "resend":
+		if cfg.ResendAPIKey == "" {
+			return nil, fmt.Errorf("RESEND_API_KEY is required when MAILER_PROVIDER=resend")
+		}
+	case "brevo":
+		if cfg.BrevoSMTPUser == "" {
+			return nil, fmt.Errorf("BREVO_SMTP_USER is required when MAILER_PROVIDER=brevo")
+		}
+		if cfg.BrevoSMTPKey == "" {
+			return nil, fmt.Errorf("BREVO_SMTP_KEY is required when MAILER_PROVIDER=brevo")
+		}
+	default:
+		return nil, fmt.Errorf("MAILER_PROVIDER must be \"resend\" or \"brevo\", got %q", cfg.MailerProvider)
 	}
 
 	return cfg, nil
