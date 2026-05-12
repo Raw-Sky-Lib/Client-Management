@@ -5,30 +5,66 @@ interface PortalHeaderProps {
   title: string
 }
 
+function siteHostname(siteURL: string): string {
+  if (!siteURL) return ''
+  try {
+    return new URL(siteURL).hostname
+  } catch {
+    return siteURL
+  }
+}
+
 export function PortalHeader({ title }: PortalHeaderProps) {
   const { user, logout } = useAuth()
-  const initial = user?.email?.[0]?.toUpperCase() ?? '?'
+  const initial  = user?.email?.[0]?.toUpperCase() ?? '?'
+  const hostname = siteHostname(user?.site_url ?? '')
 
   return (
     <header className="h-14 shrink-0 flex items-center justify-between px-8 bg-cream border-b-2 border-ink">
 
-      <h1 className="font-sans font-extrabold text-xl tracking-tight text-ink">
-        {title}
-      </h1>
+      {/* Branded breadcrumb */}
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-2 h-2 rounded-full bg-brand-red border-[1.5px] border-ink shrink-0" />
 
-      <div className="flex items-center gap-5">
+        {hostname && (
+          <>
+            <span className="font-mono text-sm text-ink opacity-50 truncate max-w-40">
+              {hostname}
+            </span>
+            <span className="font-mono text-sm text-ink opacity-25 shrink-0">/</span>
+          </>
+        )}
+
+        <h1 className="font-sans font-extrabold text-xl tracking-tight text-ink truncate">
+          {title}
+        </h1>
+      </div>
+
+      <div className="flex items-center gap-5 shrink-0">
         {/* View Site — enabled once site_url is wired in CLI-26+ */}
-        <span
-          className="font-mono text-xs text-ink opacity-30 select-none cursor-not-allowed"
-          title="Available after first content save"
-        >
-          View Site ↗
-        </span>
+        {user?.site_url ? (
+          <a
+            href={user.site_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition"
+          >
+            View Site ↗
+          </a>
+        ) : (
+          <span
+            className="font-mono text-xs text-ink opacity-25 select-none cursor-not-allowed"
+            title="Available after first content save"
+          >
+            View Site ↗
+          </span>
+        )}
 
         {/* User menu */}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
             <button
+              type="button"
               className="w-8 h-8 rounded-full bg-ink text-cream font-mono text-xs font-bold flex items-center justify-center border-2 border-ink focus:outline-none"
               aria-label="User menu"
             >

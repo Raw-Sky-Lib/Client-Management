@@ -126,4 +126,5 @@ export interface PortalUser {
   email: string
   supabase_url: string
   supabase_anon_key: string
+  site_url: string
 }

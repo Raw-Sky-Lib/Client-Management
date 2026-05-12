@@ -13,6 +13,7 @@ type PortalClaims struct {
 	Email                 string `json:"email"`
 	ClientSupabaseURL     string `json:"supabase_url"`
 	ClientSupabaseAnonKey string `json:"supabase_anon_key"`
+	SiteURL               string `json:"site_url"`
 	jwt.RegisteredClaims
 }
 
@@ -62,6 +63,7 @@ type ProfileResponse struct {
 	Email            string `json:"email"             example:"client@example.com"`
 	SupabaseURL      string `json:"supabase_url"      example:"https://abcdef.supabase.co"`
 	SupabaseAnonKey  string `json:"supabase_anon_key" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	SiteURL          string `json:"site_url"          example:"https://acmecorp.com"`
 }
 
 // CSRFResponse is the body for GET /api/auth/csrf.

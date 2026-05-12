@@ -93,6 +93,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, email, password string)
 		Email:                 email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               tenant.SiteURL,
 	}, nil
 }
 
@@ -265,6 +266,7 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password stri
 		Email:                 rec.Email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               tenant.SiteURL,
 	}, nil
 }
 
@@ -363,6 +365,7 @@ func (s *Service) VerifyLoginToken(ctx context.Context, token string) (*PortalCl
 		Email:                 rec.Email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               tenant.SiteURL,
 	}, nil
 }
 
@@ -462,6 +465,7 @@ func (s *Service) ExchangeToken(ctx context.Context, supabaseToken string) (*Por
 		Email:                 email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               tenant.SiteURL,
 	}, nil
 }
 
@@ -535,6 +539,7 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 		Email:                 claims.Email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               tenant.SiteURL,
 	})
 }
 

@@ -396,5 +396,6 @@ func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
 		Email:           claims.Email,
 		SupabaseURL:     claims.ClientSupabaseURL,
 		SupabaseAnonKey: claims.ClientSupabaseAnonKey,
+		SiteURL:         claims.SiteURL,
 	})
 }
