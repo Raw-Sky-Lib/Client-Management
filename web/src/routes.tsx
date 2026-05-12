@@ -8,6 +8,7 @@ import { LinkErrorPage } from '@/features/onboarding/link-error-page'
 import { LoginPage } from '@/features/auth/login-page'
 import { AuthCallbackPage } from '@/features/auth/auth-callback-page'
 import { ResetPasswordPage } from '@/features/auth/reset-password-page'
+import { PagesListPage } from '@/features/pages/pages-list-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -60,7 +61,7 @@ export const router = createBrowserRouter([
         element: <PortalLayout />,
         children: [
           { path: '/dashboard',     element: <Placeholder name="DashboardPage" /> },
-          { path: '/pages',         element: <Placeholder name="PagesListPage" /> },
+          { path: '/pages',         element: <PagesListPage /> },
           { path: '/pages/:slug',   element: <Placeholder name="PageEditorPage" /> },
           { path: '/blog',          element: <Placeholder name="BlogListPage" /> },
           { path: '/blog/new',      element: <Placeholder name="NewPostPage" /> },
