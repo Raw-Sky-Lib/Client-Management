@@ -17,6 +17,7 @@ import { MediaPage } from '@/features/media/media-page'
 import { AssistantPage } from '@/features/assistant/assistant-page'
 import { FormsPage } from '@/features/forms/forms-page'
 import { SettingsPage } from '@/features/settings/settings-page'
+import { DashboardPage } from '@/features/dashboard/dashboard-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -68,7 +69,7 @@ export const router = createBrowserRouter([
       {
         element: <PortalLayout />,
         children: [
-          { path: '/dashboard',     element: <Placeholder name="DashboardPage" /> },
+          { path: '/dashboard',     element: <DashboardPage /> },
           { path: '/pages',         element: <PagesListPage /> },
           { path: '/pages/:slug',   element: <PageEditorPage /> },
           { path: '/blog',          element: <BlogListPage /> },
