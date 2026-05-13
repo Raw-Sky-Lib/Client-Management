@@ -233,10 +233,11 @@
   - [x] `007_form_submissions_rls.sql` — RLS policies for anon INSERT/SELECT/UPDATE
   - [x] Depends on: CLI-23
 
-- [ ] **CLI-38** Build: Settings pages
-  - [ ] `SettingsPage` (tabbed), `GeneralSettings`, `SeoSettings`, `SocialSettings`
-  - [ ] `NavEditor` (drag-to-reorder nav items)
-  - [ ] Depends on: CLI-23
+- [x] **CLI-38** Build: Settings pages
+  - [x] `SettingsPage` (tabbed), `GeneralSettings`, `SeoSettings`, `SocialSettings`
+  - [x] `NavEditor` (drag-to-reorder nav items)
+  - [x] `SocialSettings` — dynamic add/remove any platform, stored as JSON in `social_links` key
+  - [x] Depends on: CLI-23
 
 - [ ] **CLI-39** Build: Dashboard overview
   - [ ] `DashboardPage`, `QuickActions`, `RecentEdits`, `FormSubmissionsPreview`
