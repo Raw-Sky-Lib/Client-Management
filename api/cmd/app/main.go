@@ -26,6 +26,7 @@ import (
 	"github.com/DagMT/client-portal/internal/mailer"
 	"github.com/DagMT/client-portal/internal/middleware"
 	"github.com/DagMT/client-portal/internal/onboarding"
+	"github.com/DagMT/client-portal/internal/media"
 	"github.com/DagMT/client-portal/internal/revalidate"
 	"github.com/DagMT/client-portal/internal/startup"
 	"github.com/DagMT/client-portal/internal/tenant"
@@ -113,6 +114,8 @@ func main() {
 	revalidateHandler := revalidate.NewHandler(revalidateSvc)
 	logger.Trace("revalidation service ready")
 
+	mediaHandler := media.NewHandler(httpClient)
+
 	logger.Trace("wiring Claude assistant feature")
 	claudeRL := claude.NewRateLimiter(rdb)
 	claudeRepo := claude.NewRepository(httpClient, cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID)
@@ -190,6 +193,7 @@ func main() {
 
 			r.Route("/api/assistant", claude.Routes(claudeHandler))
 			r.Route("/api/revalidate", revalidate.Routes(revalidateHandler))
+			r.Route("/api/media", media.Routes(mediaHandler))
 		})
 	})
 

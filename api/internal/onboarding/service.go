@@ -84,6 +84,14 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	if err := database.MigrateClientDB(req.ClientSupabaseDBURL); err != nil {
 		return fmt.Errorf("client db migration: %w", err)
 	}
+
+	// Create the client's default storage bucket (named from their site URL).
+	// Fire-and-forget — a failed bucket creation shouldn't block onboarding.
+	bucketName := bucketNameFromSiteURL(req.SiteURL)
+	if err := s.createDefaultBucket(ctx, req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey, bucketName); err != nil {
+		// Log but don't fail — bucket may already exist, or Storage not yet enabled.
+		_ = err
+	}
 	urlEnc, err := utils.EncryptString(req.ClientSupabaseURL, s.encKey)
 	if err != nil {
 		return err
@@ -169,7 +177,7 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 		return nil, ErrLinkExpired
 	}
 
-	urlEnc, anonEnc, srEnc, err := s.repo.GetTenantCredentials(ctx, conf.TenantID)
+	urlEnc, anonEnc, srEnc, siteURL, err := s.repo.GetTenantCredentials(ctx, conf.TenantID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch credentials: %w", err)
 	}
@@ -207,6 +215,7 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 		Email:                 conf.Email,
 		ClientSupabaseURL:     supabaseURL,
 		ClientSupabaseAnonKey: anonKey,
+		SiteURL:               siteURL,
 	}, nil
 }
 
@@ -335,6 +344,62 @@ func (s *Service) getSupabaseUserByEmail(ctx context.Context, supabaseURL, servi
 		return "", fmt.Errorf("supabase user not found for email")
 	}
 	return result.Users[0].ID, nil
+}
+
+// bucketNameFromSiteURL derives a valid Supabase bucket name from the client's site URL.
+// e.g. "https://acmecorp.com" → "acmecorp-com"
+func bucketNameFromSiteURL(siteURL string) string {
+	u, err := url.Parse(siteURL)
+	if err != nil || u.Hostname() == "" {
+		return "media"
+	}
+	name := strings.ToLower(u.Hostname())
+	name = strings.ReplaceAll(name, ".", "-")
+	var sb strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			sb.WriteRune(r)
+		}
+	}
+	name = strings.Trim(sb.String(), "-")
+	if len(name) > 63 {
+		name = name[:63]
+	}
+	if len(name) < 3 {
+		return "media"
+	}
+	return name
+}
+
+// createDefaultBucket creates a public storage bucket in the client's Supabase project.
+// A 409 conflict means the bucket already exists — treated as success.
+func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceRoleKey, bucketName string) error {
+	body, _ := json.Marshal(map[string]any{
+		"id":     bucketName,
+		"name":   bucketName,
+		"public": true,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		supabaseURL+"/storage/v1/bucket", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build bucket request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+serviceRoleKey)
+	req.Header.Set("apikey", serviceRoleKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		return nil // already exists
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("create bucket returned %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (s *Service) sendConfirmationEmail(to, token string) error {

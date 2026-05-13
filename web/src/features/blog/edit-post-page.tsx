@@ -206,8 +206,7 @@ export function EditPostPage() {
       <div className="flex gap-6 items-start">
         {/* Main editor */}
         <div
-          className="flex-1 min-w-0 border-2 border-ink rounded-xl overflow-hidden bg-white"
-          style={{ boxShadow: 'var(--shadow-hard-xs)' }}
+          className="flex-1 min-w-0 border-2 border-ink rounded-xl overflow-hidden bg-white shadow-hard-xs"
         >
           <div className="px-6 pt-6 pb-4 border-b-2 border-ink/10">
             <input

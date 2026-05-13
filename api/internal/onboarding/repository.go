@@ -72,11 +72,12 @@ func (r *Repository) GetByTokenHash(ctx context.Context, hash string) (*EmailCon
 	return c, nil
 }
 
-func (r *Repository) GetTenantCredentials(ctx context.Context, tenantID string) (urlEnc, anonEnc, srEnc string, err error) {
+func (r *Repository) GetTenantCredentials(ctx context.Context, tenantID string) (urlEnc, anonEnc, srEnc, siteURL string, err error) {
 	err = r.db.QueryRow(ctx, `
-		SELECT supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted
+		SELECT supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted,
+		       COALESCE(site_url, '')
 		FROM tenants WHERE id = $1
-	`, tenantID).Scan(&urlEnc, &anonEnc, &srEnc)
+	`, tenantID).Scan(&urlEnc, &anonEnc, &srEnc, &siteURL)
 	return
 }
 
