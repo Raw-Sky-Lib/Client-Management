@@ -14,6 +14,7 @@ import { BlogListPage } from '@/features/blog/blog-list-page'
 import { NewPostPage } from '@/features/blog/new-post-page'
 import { EditPostPage } from '@/features/blog/edit-post-page'
 import { MediaPage } from '@/features/media/media-page'
+import { AssistantPage } from '@/features/assistant/assistant-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -74,7 +75,7 @@ export const router = createBrowserRouter([
           { path: '/media',         element: <MediaPage /> },
           { path: '/forms',         element: <Placeholder name="FormsPage" /> },
           { path: '/settings',      element: <Placeholder name="SettingsPage" /> },
-          { path: '/assistant',     element: <Placeholder name="AssistantPage" /> },
+          { path: '/assistant',     element: <AssistantPage /> },
         ],
       },
     ],

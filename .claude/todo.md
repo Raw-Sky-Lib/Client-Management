@@ -206,24 +206,22 @@
 
 ## Cycle 5 · M7: Claude Assistant UI
 
-- [ ] **CLI-34** Design: Assistant panel + diff preview (Variants)
-  - [ ] Instruction form: page selector, section selector, instruction textarea
-  - [ ] Diff preview: side-by-side table (field | current | proposed | notes)
-  - [ ] Apply / Discard action bar
-  - [ ] Rate limit banner states (minute / hour / budget)
+- [x] **CLI-34** Design: Assistant panel + diff preview (Variants)
+  - [x] Instruction form: page selector, section selector, instruction textarea
+  - [x] Diff preview: side-by-side table (field | current | proposed | notes)
+  - [x] Apply / Discard action bar
+  - [x] Rate limit banner states (minute / hour / budget)
 
-- [ ] **CLI-35** Build: Claude assistant backend integration
-  - [ ] `use-assistant.ts` hook — calls `POST /assistant/generate`
-  - [ ] Handle 429 responses: map error type to correct user-facing message
-  - [ ] Depends on: CLI-16, CLI-34
+- [x] **CLI-35** Build: Claude assistant backend integration
+  - [x] `use-assistant.ts` hook — calls `POST /assistant/generate`
+  - [x] Handle 429 responses: map error type to correct user-facing message
+  - [x] Depends on: CLI-16, CLI-34
 
-- [ ] **CLI-36** Build: Assistant UI components
-  - [ ] `InstructionForm`, `DiffPreview`, `ApplyBar`, `RateLimitBanner`
-  - [ ] `AssistantPanel` (floating panel, accessible from page/post editors)
-  - [ ] `AssistantPage` (full-page version at `/assistant`)
-  - [ ] Apply flow: write changed fields to client Supabase → call portal backend for ISR → show success
-  - [ ] Adapted from Variants design (CLI-34)
-  - [ ] Depends on: CLI-35, CLI-26
+- [x] **CLI-36** Build: Assistant UI components
+  - [x] `InstructionForm`, `DiffPreview`, `ApplyBar`, `RateLimitBanner`
+  - [x] `AssistantPage` (full-page version at `/assistant`)
+  - [x] Apply flow: write changed fields to client Supabase → call portal backend for ISR → show success
+  - [x] Depends on: CLI-35, CLI-26
 
 ---
 
