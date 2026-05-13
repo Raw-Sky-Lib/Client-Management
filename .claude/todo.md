@@ -227,10 +227,11 @@
 
 ## Cycle 6 · M8: Secondary Features
 
-- [ ] **CLI-37** Build: Form submissions inbox
-  - [ ] `FormsPage`, `SubmissionsTable`, `SubmissionDetail` (sheet/drawer)
-  - [ ] Mark as read on open
-  - [ ] Depends on: CLI-23
+- [x] **CLI-37** Build: Form submissions inbox
+  - [x] `FormsPage`, `SubmissionsTable`, `SubmissionDetail` (sheet/drawer)
+  - [x] Mark as read on open
+  - [x] `007_form_submissions_rls.sql` — RLS policies for anon INSERT/SELECT/UPDATE
+  - [x] Depends on: CLI-23
 
 - [ ] **CLI-38** Build: Settings pages
   - [ ] `SettingsPage` (tabbed), `GeneralSettings`, `SeoSettings`, `SocialSettings`
