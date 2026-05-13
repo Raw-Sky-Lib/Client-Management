@@ -239,9 +239,10 @@
   - [x] `SocialSettings` — dynamic add/remove any platform, stored as JSON in `social_links` key
   - [x] Depends on: CLI-23
 
-- [ ] **CLI-39** Build: Dashboard overview
-  - [ ] `DashboardPage`, `QuickActions`, `RecentEdits`, `FormSubmissionsPreview`
-  - [ ] Depends on: CLI-23, CLI-37
+- [x] **CLI-39** Build: Dashboard overview
+  - [x] `DashboardPage`, `QuickActions`, `RecentEdits`, `FormSubmissionsPreview`
+  - [x] `use-recent-edits.ts` — parallel pages + posts queries merged by updated_at
+  - [x] Depends on: CLI-23, CLI-37
 
 ---
 
