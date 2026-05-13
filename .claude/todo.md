@@ -184,23 +184,23 @@
 
 ## Cycle 5 · M6: Media Library
 
-- [ ] **CLI-31** Design: Media library grid (Variants)
-  - [ ] Grid of image cards: thumbnail, filename, size, copy URL button
-  - [ ] Upload area: drag-and-drop zone + file picker button
-  - [ ] Media picker modal (for use from other editors)
+- [x] **CLI-31** Design: Media library grid (Variants)
+  - [x] Grid of image cards: thumbnail, filename, size, copy URL + delete buttons
+  - [x] Upload area: drag-and-drop zone + file picker
+  - [x] Media picker modal (for use from other editors)
 
-- [ ] **CLI-32** Build: Media library
-  - [ ] `MediaPage`, `MediaGrid`, `MediaItem`, `MediaUploader`
-  - [ ] Direct Supabase Storage upload from browser (anon key + Storage RLS)
-  - [ ] Accepts: jpeg, png, webp, gif, svg · Max: 5MB
-  - [ ] Copy URL to clipboard button
-  - [ ] Adapted from Variants design (CLI-31)
-  - [ ] Depends on: CLI-23, CLI-31
+- [x] **CLI-32** Build: Media library
+  - [x] Storage-native: `useStorageFiles`, `useUploadFile`, `useDeleteFile` (no media table)
+  - [x] `FileBrowser` — full recursive folder tree with breadcrumb navigation, drag-and-drop
+  - [x] `StorageItemCard` — folder or file, copy URL + delete for files
+  - [x] Primary bucket derived from `site_url` (e.g. acmecorp-com), auto-created on registration
+  - [x] Backend: `createDefaultBucket` called from `RegisterClient` using service role key
+  - [x] Depends on: CLI-23, CLI-31
 
-- [ ] **CLI-33** Build: MediaPickerModal
-  - [ ] Reusable modal: browse library → select → return URL via `onSelect(url)` callback
-  - [ ] Used in: `PostMetaForm` (cover image), section editors (images)
-  - [ ] Depends on: CLI-32
+- [x] **CLI-33** Build: MediaPickerModal
+  - [x] Radix Dialog wrapping `FileBrowser` in selectable mode — full tree, onSelect closes + returns URL
+  - [x] Wired into PostMetaSidebar (cover image)
+  - [x] Depends on: CLI-32
 
 ---
 

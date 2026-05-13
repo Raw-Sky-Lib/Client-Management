@@ -56,6 +56,15 @@ body {
 }
 
 /* ─── Reusable button shadow — matches Variants hard-shadow hover pattern ─── */
+/* ─── Hard shadow utilities — avoids inline style on every card ─────────── */
+.shadow-hard    { box-shadow: var(--shadow-hard); }
+.shadow-hard-sm { box-shadow: var(--shadow-hard-sm); }
+.shadow-hard-xs { box-shadow: var(--shadow-hard-xs); }
+
+/* Progress bar fill — width driven by --progress CSS variable set on the element */
+.progress-bar-fill { width: var(--progress, 0%); }
+
+/* ─── Reusable button shadow — matches Variants hard-shadow hover pattern ─── */
 .btn-ink-shadow {
   box-shadow: 6px 6px 0 #1C1C1A;
   transition: transform 0.15s ease, box-shadow 0.15s ease;

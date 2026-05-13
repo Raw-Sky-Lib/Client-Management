@@ -20,6 +20,21 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
+export function bucketNameFromSiteURL(siteURL: string): string {
+  try {
+    const hostname = new URL(siteURL).hostname
+    const name = hostname
+      .toLowerCase()
+      .replace(/\./g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 63)
+    return name.length >= 3 ? name : 'media'
+  } catch {
+    return 'media'
+  }
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()
