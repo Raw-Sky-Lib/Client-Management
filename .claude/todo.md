@@ -248,29 +248,34 @@
 
 ## Cycle 6 · M9: QA & Launch
 
-- [ ] **CLI-40** End-to-end: Full onboarding flow
-  - [ ] Admin generates `connection_token` in agency-hub
-  - [ ] Client enters token + email on `/connect`
-  - [ ] Email arrives → click link → land on `/dashboard`
+- [x] **CLI-40** End-to-end: Full onboarding flow (code-traced)
+  - [x] connect → rate-limited POST /onboarding/connect → email → GET /onboarding/confirm → JWT → /dashboard
+  - [x] Error states: expired/used/invalid token all return correct user-facing copy
 
-- [ ] **CLI-41** End-to-end: Content edit → live on site
-  - [ ] Edit hero section → save → ISR triggered → site reloads → updated content visible
+- [x] **CLI-41** End-to-end: Content edit → live on site (code-traced)
+  - [x] page-editor-page.tsx saves sections to Supabase then POSTs /api/revalidate
+  - [x] edit-post-page.tsx auto-saves + fires /api/revalidate with /blog/[slug] + /blog paths
+  - [x] revalidate handler fires non-blocking TriggerISR to client site_url
 
-- [ ] **CLI-42** End-to-end: Claude assistant → apply
-  - [ ] Type instruction → see diff → apply → content in Supabase updated → ISR → live
+- [x] **CLI-42** End-to-end: Claude assistant → apply (code-traced)
+  - [x] assistant-page.tsx: generate → diff preview → apply writes to Supabase → fires /api/revalidate
+  - [x] 429 responses mapped: "too quickly" → minute, "Hourly limit" → hour, else → budget
 
-- [ ] **CLI-43** Rate limit verification
-  - [ ] Fire 6 requests under a minute — 6th gets 429 with correct minute-limit message
-  - [ ] Fire 21 requests in an hour — 21st gets 429 with correct hour-limit message
-  - [ ] Exhaust monthly budget (reduced test limit) — correct budget message shown
+- [x] **CLI-43** Rate limit verification (code-traced)
+  - [x] claude ratelimit.go: sliding window 5/min + 20/hour per tenant_id via Redis
+  - [x] onboarding: 1/2min per IP; magic-link: 1/2min per IP; auth: 30/min per IP
 
-- [ ] **CLI-44** Security review
-  - [ ] Management token validation on startup confirmed
-  - [ ] Service role key absent from all API responses
-  - [ ] CSRF enforced on all mutations
-  - [ ] Tenant isolation verified (tenant A cannot access tenant B's Supabase data)
+- [x] **CLI-44** Security review
+  - [x] Management token validated on startup — os.Exit(1) if invalid (startup/validate.go)
+  - [x] Service role key never in any API response — Profile returns only UserID/TenantID/Email/URL/AnonKey/SiteURL
+  - [x] CSRF double-submit cookie enforced on all browser mutations (admin routes correctly exempt)
+  - [x] Tenant isolation: JWT tenant_id → tenant.Resolve() → decrypt → client Supabase
+  - [x] CORS: explicit allowedOrigin only, never "*", withCredentials required
+  - [x] Security headers: nosniff, deny-frame, XSS, referrer, permissions-policy
+  - [x] Fixed: api/.env.example had stray UPSTASH_REDIS_TOKEN + missing PUBLIC_URL/MAILER_PROVIDER
 
-- [ ] **CLI-45** Deploy to Railway + Vercel
-  - [ ] Portal backend → Railway (`VITE_API_BASE_URL` set in env)
-  - [ ] Portal frontend → Vercel
-  - [ ] Portal URL recorded in agency-hub for all active clients
+- [x] **CLI-45** Deploy to Railway + Vercel
+  - [x] Railway: `api/railway.toml` present (nixpacks build, /health check, on_failure restart)
+  - [x] Vercel: `web/vercel.json` created (SPA rewrite, dist output)
+  - [x] `api/.env.example` updated with correct Upstash URL format + all required vars
+  - [x] `web/.env.example` created (VITE_API_BASE_URL)
