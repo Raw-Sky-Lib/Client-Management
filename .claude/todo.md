@@ -146,18 +146,18 @@
   - [x] Loading skeletons, empty state, error state
   - [x] Depends on: CLI-23, CLI-24
 
-- [ ] **CLI-26** Build: Page editor + section framework + all section editors
-  - [ ] `PageEditorPage`, `SectionEditor` (data-driven, not hardcoded types)
-  - [ ] `SaveIndicator` (idle / saving / saved / error — auto-clears after 2s)
-  - [ ] `SectionPublishToggle`
-  - [ ] All section editors: Hero, Features, About, Testimonials, CTA
-  - [ ] Save: write to client Supabase → trigger ISR via portal backend
-  - [ ] Depends on: CLI-25, CLI-12
+- [x] **CLI-26** Build: Page editor + section framework + all section editors
+  - [x] `PageEditorPage` — two-column layout: sticky section list + active editor panel
+  - [x] `SectionEditor` — dispatcher to known editors, generic fallback for unknown types
+  - [x] `SaveIndicator` — idle/saving/saved/error, auto-clears (in components/shared/)
+  - [x] Publish/unpublish toggle with ISR trigger
+  - [x] Save writes full sections to client Supabase → fires POST /api/revalidate
+  - [x] POST /api/revalidate backend endpoint wired
 
-- [ ] **CLI-27** Build: Remaining section editors
-  - [ ] `FeaturesEditor` (repeatable items), `AboutEditor`, `TestimonialsEditor`, `CTAEditor`
-  - [ ] Reuse `SectionEditor` framework from CLI-26
-  - [ ] Depends on: CLI-26
+- [x] **CLI-27** Build: Remaining section editors
+  - [x] `HeroEditor`, `FeaturesEditor`, `AboutEditor`, `TestimonialsEditor`, `CTAEditor`
+  - [x] `editor-primitives.tsx` — shared Field, inputClass, textareaClass
+  - [x] FeaturesEditor + TestimonialsEditor support repeatable add/remove rows
 
 ---
 

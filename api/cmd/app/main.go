@@ -110,7 +110,7 @@ func main() {
 
 	logger.Trace("wiring revalidation service")
 	revalidateSvc := revalidate.NewService(httpClient)
-	_ = revalidateSvc // passed to content handlers in CLI-26+
+	revalidateHandler := revalidate.NewHandler(revalidateSvc)
 	logger.Trace("revalidation service ready")
 
 	logger.Trace("wiring Claude assistant feature")
@@ -189,6 +189,7 @@ func main() {
 			r.Use(tenant.ResolveTenant(tenantSvc))
 
 			r.Route("/api/assistant", claude.Routes(claudeHandler))
+			r.Route("/api/revalidate", revalidate.Routes(revalidateHandler))
 		})
 	})
 

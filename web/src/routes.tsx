@@ -9,6 +9,7 @@ import { LoginPage } from '@/features/auth/login-page'
 import { AuthCallbackPage } from '@/features/auth/auth-callback-page'
 import { ResetPasswordPage } from '@/features/auth/reset-password-page'
 import { PagesListPage } from '@/features/pages/pages-list-page'
+import { PageEditorPage } from '@/features/pages/page-editor-page'
 
 // Placeholders — replaced as each milestone builds the real component
 const Placeholder = ({ name }: { name: string }) => (
@@ -62,7 +63,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/dashboard',     element: <Placeholder name="DashboardPage" /> },
           { path: '/pages',         element: <PagesListPage /> },
-          { path: '/pages/:slug',   element: <Placeholder name="PageEditorPage" /> },
+          { path: '/pages/:slug',   element: <PageEditorPage /> },
           { path: '/blog',          element: <Placeholder name="BlogListPage" /> },
           { path: '/blog/new',      element: <Placeholder name="NewPostPage" /> },
           { path: '/blog/:id/edit', element: <Placeholder name="EditPostPage" /> },
