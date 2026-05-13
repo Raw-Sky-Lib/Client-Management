@@ -10,7 +10,9 @@
       "Bash(psql postgresql://postgres.tgysvlfdsxjglbneeulx:prodagencyhub@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require -c 'SELECT id, email, used_at, expires_at, created_at FROM email_confirmations ORDER BY created_at DESC LIMIT 5;')",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8081/api/auth/login/verify?token=invalid123\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" -X POST http://localhost:8081/api/admin/resend-invite -H \"Content-Type: application/json\" -H \"Authorization: Bearer wrongtoken\" -d '{\"client_id\":\"00000000-0000-0000-0000-000000000000\",\"email\":\"test@test.com\"}')",
-      "Bash(curl -s \"http://localhost:8081/api/auth/login/verify?token=testtoken123\" -w \"\\\\nStatus: %{http_code}\\\\nLocation: %{redirect_url}\" -o /dev/null)"
+      "Bash(curl -s \"http://localhost:8081/api/auth/login/verify?token=testtoken123\" -w \"\\\\nStatus: %{http_code}\\\\nLocation: %{redirect_url}\" -o /dev/null)",
+      "Bash(node -e \"const { useEditor } = require\\('@tiptap/react'\\); console.log\\(typeof useEditor\\)\")",
+      "Bash(node -e \"const t = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(t\\).join\\(', '\\)\\)\")"
     ]
   }
 }

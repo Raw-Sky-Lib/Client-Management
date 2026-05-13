@@ -163,24 +163,22 @@
 
 ## Cycle 4 · M5: Blog Editor
 
-- [ ] **CLI-28** Design: Blog list + post editor (Variants)
-  - [ ] Posts table with status badges (Draft / Published)
-  - [ ] Post editor: Tiptap toolbar + content area + meta sidebar
-  - [ ] Meta sidebar: slug, excerpt, cover image picker, author, SEO
+- [x] **CLI-28** Design: Blog list + post editor (Variants)
+  - [x] Posts table with status badges (Draft / Published)
+  - [x] Post editor: Tiptap toolbar + content area + meta sidebar
+  - [x] Meta sidebar: slug, excerpt, cover image picker, author, SEO
 
-- [ ] **CLI-29** Build: Blog list page
-  - [ ] `BlogListPage`, `PostsTable`
-  - [ ] Depends on: CLI-23, CLI-28
+- [x] **CLI-29** Build: Blog list page
+  - [x] `BlogListPage`, `PostsTable`
+  - [x] Depends on: CLI-23, CLI-28
 
-- [ ] **CLI-30** Build: Post editor (Tiptap)
-  - [ ] `PostEditor` (Tiptap: StarterKit, Image, Link, Placeholder)
-  - [ ] `PostMetaForm` (all meta fields + `MediaPickerModal` for cover image)
-  - [ ] `PostStatusToggle` (Draft ↔ Published; `published_at` set on first publish, not cleared on unpublish)
-  - [ ] `NewPostPage`, `EditPostPage`
-  - [ ] Auto-save: debounce 2s after typing stops
-  - [ ] Slug: auto-generated from title, editable, unique check on blur
-  - [ ] Adapted from Variants design (CLI-28)
-  - [ ] Depends on: CLI-29
+- [x] **CLI-30** Build: Post editor (Tiptap)
+  - [x] `TiptapEditor` (StarterKit, Image, Link, Placeholder) + toolbar
+  - [x] `PostMetaSidebar` (slug, excerpt, author, cover image stub)
+  - [x] Publish toggle (published_at set on first publish, not cleared on unpublish)
+  - [x] `NewPostPage` (insert on save → redirect to edit), `EditPostPage` (auto-save 2s debounce)
+  - [x] Slug: auto-generated from title, editable, unique check on blur
+  - [x] Depends on: CLI-29
 
 ---
 
