@@ -16,9 +16,8 @@ type Config struct {
 	DBSSLMode     string
 
 	// Agency-hub
-	AgencyAPIURL          string
-	AgencyClientID        string
-	AgencyManagementToken string
+	AgencyAPIURL     string
+	PortalAdminSecret string
 
 	// Auth
 	JWTSecret        string
@@ -55,9 +54,8 @@ func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		SupabaseDBURL:         os.Getenv("SUPABASE_DB_URL"),
 		DBSSLMode:             envOrDefault("DB_SSLMODE", "require"),
-		AgencyAPIURL:          os.Getenv("AGENCY_API_URL"),
-		AgencyClientID:        os.Getenv("AGENCY_CLIENT_ID"),
-		AgencyManagementToken: os.Getenv("AGENCY_MANAGEMENT_TOKEN"),
+		AgencyAPIURL:      os.Getenv("AGENCY_API_URL"),
+		PortalAdminSecret: os.Getenv("PORTAL_ADMIN_SECRET"),
 		JWTSecret:             os.Getenv("JWT_SECRET"),
 		UpstashRedisURL:       os.Getenv("UPSTASH_REDIS_URL"),
 		AnthropicAPIKey:       os.Getenv("ANTHROPIC_API_KEY"),
@@ -92,13 +90,12 @@ func LoadConfig() (*Config, error) {
 	}
 
 	required := map[string]string{
-		"SUPABASE_DB_URL":         cfg.SupabaseDBURL,
-		"AGENCY_API_URL":          cfg.AgencyAPIURL,
-		"AGENCY_CLIENT_ID":        cfg.AgencyClientID,
-		"AGENCY_MANAGEMENT_TOKEN": cfg.AgencyManagementToken,
-		"JWT_SECRET":              cfg.JWTSecret,
-		"UPSTASH_REDIS_URL":       cfg.UpstashRedisURL,
-		"ANTHROPIC_API_KEY":       cfg.AnthropicAPIKey,
+		"SUPABASE_DB_URL":    cfg.SupabaseDBURL,
+		"AGENCY_API_URL":     cfg.AgencyAPIURL,
+		"PORTAL_ADMIN_SECRET": cfg.PortalAdminSecret,
+		"JWT_SECRET":         cfg.JWTSecret,
+		"UPSTASH_REDIS_URL":  cfg.UpstashRedisURL,
+		"ANTHROPIC_API_KEY":  cfg.AnthropicAPIKey,
 	}
 	for name, val := range required {
 		if val == "" {

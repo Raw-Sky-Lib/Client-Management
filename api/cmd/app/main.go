@@ -28,7 +28,6 @@ import (
 	"github.com/DagMT/client-portal/internal/onboarding"
 	"github.com/DagMT/client-portal/internal/media"
 	"github.com/DagMT/client-portal/internal/revalidate"
-	"github.com/DagMT/client-portal/internal/startup"
 	"github.com/DagMT/client-portal/internal/tenant"
 	"github.com/DagMT/client-portal/internal/utils"
 	"github.com/DagMT/client-portal/pkg/logger"
@@ -69,17 +68,7 @@ func main() {
 	}
 	logger.Trace("Redis connected")
 
-	logger.Trace("validating management token with agency-hub", slog.String("Agency", cfg.AgencyAPIURL))
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	if err := startup.ValidateManagementToken(
-		cfg.AgencyAPIURL,
-		cfg.AgencyManagementToken,
-		cfg.AgencyClientID,
-		httpClient,
-	); err != nil {
-		logger.Fatal("startup validation failed", slog.String("Error", err.Error()))
-	}
-	logger.Trace("agency-hub management token valid")
 
 	encKey, err := utils.DeriveEncryptionKey(cfg.JWTSecret)
 	if err != nil {
@@ -118,7 +107,7 @@ func main() {
 
 	logger.Trace("wiring Claude assistant feature")
 	claudeRL := claude.NewRateLimiter(rdb)
-	claudeRepo := claude.NewRepository(httpClient, cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID)
+	claudeRepo := claude.NewRepository(httpClient, cfg.AgencyAPIURL, cfg.PortalAdminSecret)
 	claudePrompt := claude.NewPromptBuilder(httpClient)
 	claudeSvc := claude.NewService(claudeRL, claudeRepo, claudePrompt, cfg.AnthropicAPIKey, cfg.AnthropicDefaultModel)
 	claudeHandler := claude.NewHandler(claudeSvc)
@@ -128,10 +117,10 @@ func main() {
 	onboardRepo := onboarding.NewRepository(pool)
 	onboardSvc := onboarding.NewService(
 		onboardRepo, httpClient, m,
-		cfg.AgencyAPIURL, cfg.AgencyManagementToken, cfg.AgencyClientID,
+		cfg.AgencyAPIURL, cfg.PortalAdminSecret,
 		encKey, cfg.PublicURL, cfg.FrontendURL,
 	)
-	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.AgencyManagementToken, cfg.FrontendURL, authSvc)
+	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.PortalAdminSecret, cfg.FrontendURL, authSvc)
 	logger.Trace("onboarding feature ready")
 
 	logger.Trace("building router")
