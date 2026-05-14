@@ -30,35 +30,33 @@ var (
 )
 
 type Service struct {
-	repo           *Repository
-	httpClient     *http.Client
-	mailer         mailer.Mailer
-	agencyURL      string
-	agencyToken    string
-	agencyClientID string
-	encKey         []byte
-	publicURL      string // backend's own URL — confirmation email links point here
-	frontendURL    string // frontend URL — post-confirm redirect target
+	repo        *Repository
+	httpClient  *http.Client
+	mailer      mailer.Mailer
+	agencyURL   string
+	agencyToken string
+	encKey      []byte
+	publicURL   string // backend's own URL — confirmation email links point here
+	frontendURL string // frontend URL — post-confirm redirect target
 }
 
 func NewService(
 	repo *Repository,
 	httpClient *http.Client,
 	m mailer.Mailer,
-	agencyURL, agencyToken, agencyClientID string,
+	agencyURL, agencyToken string,
 	encKey []byte,
 	publicURL, frontendURL string,
 ) *Service {
 	return &Service{
-		repo:           repo,
-		httpClient:     httpClient,
-		mailer:         m,
-		agencyURL:      agencyURL,
-		agencyToken:    agencyToken,
-		agencyClientID: agencyClientID,
-		encKey:         encKey,
-		publicURL:      publicURL,
-		frontendURL:    frontendURL,
+		repo:        repo,
+		httpClient:  httpClient,
+		mailer:      m,
+		agencyURL:   agencyURL,
+		agencyToken: agencyToken,
+		encKey:      encKey,
+		publicURL:   publicURL,
+		frontendURL: frontendURL,
 	}
 }
 
@@ -154,12 +152,7 @@ func (s *Service) Connect(ctx context.Context, req ConnectRequest) error {
 	if err := s.repo.StoreEmailConfirmation(ctx, clientID, req.Email, hash, time.Now().Add(24*time.Hour)); err != nil {
 		return fmt.Errorf("store confirmation: %w", err)
 	}
-	// Send email before consuming — only burn the token after the email is out.
-	// If send fails, the stored confirmation expires naturally and the user can retry.
-	if err := s.sendConfirmationEmail(req.Email, plaintext); err != nil {
-		return fmt.Errorf("send confirmation email: %w", err)
-	}
-	return s.consumeConnectionToken(ctx, req.ConnectionToken, req.Email)
+	return s.sendConfirmationEmail(req.Email, plaintext)
 }
 
 func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims, error) {
@@ -219,28 +212,6 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 	}, nil
 }
 
-func (s *Service) consumeConnectionToken(ctx context.Context, token, email string) error {
-	body, _ := json.Marshal(map[string]string{"token": token, "email": email})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.agencyURL+"/api/consume-connection-token", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.agencyToken)
-	req.Header.Set("X-Client-ID", s.agencyClientID)
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("call agency-hub: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("consume token returned %d", resp.StatusCode)
-	}
-	return nil
-}
-
 func (s *Service) validateConnectionToken(ctx context.Context, token, email string) (string, error) {
 	body, _ := json.Marshal(map[string]string{"token": token, "email": email})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -250,7 +221,6 @@ func (s *Service) validateConnectionToken(ctx context.Context, token, email stri
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.agencyToken)
-	req.Header.Set("X-Client-ID", s.agencyClientID)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

@@ -17,15 +17,13 @@ type Repository struct {
 	httpClient  *http.Client
 	agencyURL   string
 	agencyToken string
-	clientID    string
 }
 
-func NewRepository(httpClient *http.Client, agencyURL, agencyToken, clientID string) *Repository {
+func NewRepository(httpClient *http.Client, agencyURL, agencyToken string) *Repository {
 	return &Repository{
 		httpClient:  httpClient,
 		agencyURL:   agencyURL,
 		agencyToken: agencyToken,
-		clientID:    clientID,
 	}
 }
 
@@ -106,6 +104,5 @@ func (r *Repository) CheckBudget(ctx context.Context, tenantID string) error {
 func (r *Repository) setHeaders(req *http.Request, tenantID string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+r.agencyToken)
-	req.Header.Set("X-Client-ID", r.clientID)
 	req.Header.Set("X-Tenant-ID", tenantID)
 }

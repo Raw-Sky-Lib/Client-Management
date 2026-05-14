@@ -12,7 +12,10 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" -X POST http://localhost:8081/api/admin/resend-invite -H \"Content-Type: application/json\" -H \"Authorization: Bearer wrongtoken\" -d '{\"client_id\":\"00000000-0000-0000-0000-000000000000\",\"email\":\"test@test.com\"}')",
       "Bash(curl -s \"http://localhost:8081/api/auth/login/verify?token=testtoken123\" -w \"\\\\nStatus: %{http_code}\\\\nLocation: %{redirect_url}\" -o /dev/null)",
       "Bash(node -e \"const { useEditor } = require\\('@tiptap/react'\\); console.log\\(typeof useEditor\\)\")",
-      "Bash(node -e \"const t = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(t\\).join\\(', '\\)\\)\")"
+      "Bash(node -e \"const t = require\\('@tiptap/react'\\); console.log\\(Object.keys\\(t\\).join\\(', '\\)\\)\")",
+      "Bash(node -e \"const l = require\\('/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/node_modules/lucide-react'\\); console.log\\(Object.keys\\(l\\).filter\\(k => /git/i.test\\(k\\)\\)\\)\")",
+      "Bash(lsof -ti:5173,5174,5175,3000)",
+      "Bash(lsof -i:5173,5174,5175,3000)"
     ]
   }
 }
