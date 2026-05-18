@@ -24,9 +24,10 @@ import (
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/mailer"
+	"github.com/DagMT/client-portal/internal/media"
 	"github.com/DagMT/client-portal/internal/middleware"
 	"github.com/DagMT/client-portal/internal/onboarding"
-	"github.com/DagMT/client-portal/internal/media"
+	"github.com/DagMT/client-portal/internal/portalproject"
 	"github.com/DagMT/client-portal/internal/revalidate"
 	"github.com/DagMT/client-portal/internal/tenant"
 	"github.com/DagMT/client-portal/internal/utils"
@@ -54,6 +55,12 @@ func main() {
 	}
 	defer pool.Close()
 	logger.Trace("database connected")
+
+	logger.Trace("running portal DB migrations")
+	if err := database.MigratePortalDB(pool); err != nil {
+		logger.Fatal("portal DB migration failed", slog.String("Error", err.Error()))
+	}
+	logger.Trace("portal DB migrations complete")
 
 	logger.Trace("connecting to Redis")
 	redisOpt, err := redis.ParseURL(cfg.UpstashRedisURL)
@@ -123,6 +130,11 @@ func main() {
 	onboardHandler := onboarding.NewHandler(onboardSvc, cfg.PortalAdminSecret, cfg.FrontendURL, authSvc)
 	logger.Trace("onboarding feature ready")
 
+	logger.Trace("wiring portalproject feature")
+	portalProjectRepo := portalproject.NewRepository(pool)
+	portalProjectHandler := portalproject.NewHandler(portalProjectRepo, encKey)
+	logger.Trace("portalproject feature ready")
+
 	logger.Trace("building router")
 	r := chi.NewRouter()
 
@@ -174,12 +186,18 @@ func main() {
 			middleware.Authenticate(cfg.JWTSecret),
 		))
 
-		// Authenticated routes — 30/min per IP
+		// Authenticated routes — 30/min per IP, no tenant credential resolution needed
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Authenticate(cfg.JWTSecret))
+			r.Use(middleware.RateLimit(rdb, "auth", 30, time.Minute))
+			r.Route("/api/projects", portalproject.Routes(portalProjectHandler))
+		})
+
+		// Authenticated routes with full tenant context (Supabase credentials resolved)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Authenticate(cfg.JWTSecret))
 			r.Use(middleware.RateLimit(rdb, "auth", 30, time.Minute))
 			r.Use(tenant.ResolveTenant(tenantSvc))
-
 			r.Route("/api/assistant", claude.Routes(claudeHandler))
 			r.Route("/api/revalidate", revalidate.Routes(revalidateHandler))
 			r.Route("/api/media", media.Routes(mediaHandler))

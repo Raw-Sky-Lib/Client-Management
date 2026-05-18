@@ -124,7 +124,15 @@ export interface PortalUser {
   user_id: string
   tenant_id: string
   email: string
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+export interface ProjectEntry {
+  id: string
+  agency_project_id: string
+  name: string
+  site_url: string
   supabase_url: string
   supabase_anon_key: string
-  site_url: string
 }

@@ -8,12 +8,9 @@ import (
 )
 
 type PortalClaims struct {
-	UserID                string `json:"user_id"`
-	TenantID              string `json:"tenant_id"`
-	Email                 string `json:"email"`
-	ClientSupabaseURL     string `json:"supabase_url"`
-	ClientSupabaseAnonKey string `json:"supabase_anon_key"`
-	SiteURL               string `json:"site_url"`
+	UserID   string `json:"user_id"`
+	TenantID string `json:"tenant_id"`
+	Email    string `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -58,12 +55,9 @@ type ExchangeRequest struct {
 
 // ProfileResponse is the body for GET /api/auth/profile.
 type ProfileResponse struct {
-	UserID           string `json:"user_id"           example:"550e8400-e29b-41d4-a716-446655440000"`
-	TenantID         string `json:"tenant_id"         example:"550e8400-e29b-41d4-a716-446655440001"`
-	Email            string `json:"email"             example:"client@example.com"`
-	SupabaseURL      string `json:"supabase_url"      example:"https://abcdef.supabase.co"`
-	SupabaseAnonKey  string `json:"supabase_anon_key" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	SiteURL          string `json:"site_url"          example:"https://acmecorp.com"`
+	UserID   string `json:"user_id"   example:"550e8400-e29b-41d4-a716-446655440000"`
+	TenantID string `json:"tenant_id" example:"550e8400-e29b-41d4-a716-446655440001"`
+	Email    string `json:"email"     example:"client@example.com"`
 }
 
 // CSRFResponse is the body for GET /api/auth/csrf.

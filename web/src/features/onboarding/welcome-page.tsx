@@ -5,13 +5,14 @@ import { Database, FileText, PenLine, Image, Inbox, Settings2, Sparkles, CheckCi
 import { OnboardingLayout, type OnboardingStep } from '@/components/layout/onboarding-layout'
 import { HardShadowCard } from '@/components/ui/hard-shadow-card'
 import { useAuth } from '@/contexts/auth-context'
+import { useProjectContext } from '@/contexts/supabase-context'
 import { cn } from '@/lib/utils'
 import api from '@/lib/axios'
 
 const STEPS: OnboardingStep[] = [
-  { label: 'Enter Code',     sublabel: 'Code verified',   status: 'done'   },
-  { label: 'Verify Email',   sublabel: 'Email confirmed', status: 'done'   },
-  { label: 'Access Granted', sublabel: 'Workspace ready', status: 'active' },
+  { label: 'Invite Sent',     sublabel: 'Link delivered',      status: 'done'   },
+  { label: 'Email Confirmed', sublabel: 'Identity verified',   status: 'done'   },
+  { label: 'Access Granted',  sublabel: 'Workspace ready',     status: 'active' },
 ]
 
 const FEATURES = [
@@ -32,9 +33,10 @@ function supabaseRef(url: string): string {
 }
 
 export function WelcomePage() {
-  const { user }  = useAuth()
-  const navigate  = useNavigate()
-  const projectRef = user ? supabaseRef(user.supabase_url) : '…'
+  const { user }            = useAuth()
+  const { activeProject }   = useProjectContext()
+  const navigate            = useNavigate()
+  const projectRef          = supabaseRef(activeProject.supabase_url)
 
   const [password, setPassword]   = useState('')
   const [confirm, setConfirm]     = useState('')
@@ -93,7 +95,7 @@ export function WelcomePage() {
               <div className="min-w-0">
                 <p className="font-mono text-sm font-bold text-ink">{projectRef}</p>
                 <p className="font-mono text-xs text-ink opacity-50 truncate">
-                  {user?.supabase_url}
+                  {activeProject.supabase_url}
                 </p>
               </div>
               <div className="ml-auto flex items-center gap-1.5 shrink-0">

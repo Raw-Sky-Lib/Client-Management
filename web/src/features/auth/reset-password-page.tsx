@@ -4,11 +4,11 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useSearchParams } from 'react-router'
+import { CheckCircle2 } from 'lucide-react'
 import { AgencyBadge } from '@/components/ui/agency-badge'
 import { HardShadowCard } from '@/components/ui/hard-shadow-card'
 import { cn } from '@/lib/utils'
 import api from '@/lib/axios'
-import { useAuth } from '@/contexts/auth-context'
 
 const schema = z.object({
   password:        z.string().min(8, 'Password must be at least 8 characters'),
@@ -22,7 +22,7 @@ type FormValues = z.infer<typeof schema>
 export function ResetPasswordPage() {
   const [searchParams]    = useSearchParams()
   const navigate          = useNavigate()
-  const { refresh }       = useAuth()
+  const [done, setDone]   = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
   const token = searchParams.get('token')
@@ -36,12 +36,45 @@ export function ResetPasswordPage() {
     return null
   }
 
+  if (done) {
+    return (
+      <div className="min-h-svh bg-cream flex flex-col items-center justify-center p-8 gap-8">
+        <div className="flex items-center gap-2.5 font-sans font-extrabold text-2xl tracking-tight text-ink">
+          <div className="w-3 h-3 rounded-full bg-brand-red border-2 border-ink shrink-0" />
+          Client Portal
+        </div>
+        <div className="w-full max-w-md">
+          <HardShadowCard>
+            <div className="px-8 pt-7 pb-5 border-b-2 border-ink flex items-center gap-3">
+              <CheckCircle2 className="w-6 h-6 text-forest shrink-0" />
+              <h2 className="font-sans font-extrabold text-[1.75rem] leading-tight tracking-tight text-ink">
+                Password updated.
+              </h2>
+            </div>
+            <div className="px-8 py-7 flex flex-col gap-5">
+              <p className="font-mono text-sm text-ink opacity-60 leading-relaxed">
+                Your password has been changed successfully. Sign in with your new password.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/login', { replace: true })}
+                className="btn-ink-shadow w-full flex items-center justify-center gap-3 bg-forest text-white font-sans font-extrabold text-lg uppercase tracking-wider py-4 px-8 rounded-lg border-2 border-ink"
+              >
+                Back to sign in
+              </button>
+            </div>
+          </HardShadowCard>
+        </div>
+        <AgencyBadge />
+      </div>
+    )
+  }
+
   async function onSubmit(values: FormValues) {
     setFormError(null)
     try {
       await api.post('/api/auth/reset-password/confirm', { token, password: values.password })
-      await refresh()
-      navigate('/dashboard', { replace: true })
+      setDone(true)
     } catch (err) {
       if (isAxiosError(err)) {
         const status = err.response?.status

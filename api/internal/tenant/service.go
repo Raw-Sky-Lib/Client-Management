@@ -19,8 +19,8 @@ func NewService(repo *Repository, encKey []byte) *Service {
 	return &Service{repo: repo, encKey: encKey}
 }
 
-// Resolve fetches a tenant's encrypted credentials from the portal DB,
-// decrypts them, and returns a Config ready for use by handlers.
+// Resolve confirms the tenant exists then fetches its first project's encrypted
+// credentials, decrypts them, and returns a Config ready for use by handlers.
 func (s *Service) Resolve(ctx context.Context, tenantID string) (*Config, error) {
 	raw, err := s.repo.GetByID(ctx, tenantID)
 	if err != nil {
@@ -30,15 +30,23 @@ func (s *Service) Resolve(ctx context.Context, tenantID string) (*Config, error)
 		return nil, ErrTenantNotFound
 	}
 
-	supabaseURL, err := utils.DecryptString(raw.URLEnc, s.encKey)
+	proj, err := s.repo.GetFirstProjectForTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch project: %w", err)
+	}
+	if proj == nil {
+		return nil, fmt.Errorf("tenant has no projects")
+	}
+
+	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt url: %w", err)
 	}
-	anonKey, err := utils.DecryptString(raw.AnonEnc, s.encKey)
+	anonKey, err := utils.DecryptString(proj.AnonEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt anon: %w", err)
 	}
-	serviceRoleKey, err := utils.DecryptString(raw.SREnc, s.encKey)
+	serviceRoleKey, err := utils.DecryptString(proj.SREnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt service role: %w", err)
 	}
@@ -48,6 +56,6 @@ func (s *Service) Resolve(ctx context.Context, tenantID string) (*Config, error)
 		SupabaseURL:     supabaseURL,
 		SupabaseAnonKey: anonKey,
 		ServiceRoleKey:  serviceRoleKey,
-		SiteURL:         raw.SiteURL,
+		SiteURL:         proj.SiteURL,
 	}, nil
 }

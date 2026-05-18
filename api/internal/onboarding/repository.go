@@ -18,20 +18,84 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) UpsertTenant(ctx context.Context, clientID, urlEnc, anonEnc, srEnc, dbURLEnc, siteURL string) error {
+// UpsertTenant creates an identity-only row in tenants (no credentials).
+// Credentials live in tenant_projects — see UpsertTenantProject.
+func (r *Repository) UpsertTenant(ctx context.Context, clientID string) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO tenants
-			(id, supabase_url_encrypted, supabase_anon_encrypted,
-			 supabase_service_role_encrypted, supabase_db_url_encrypted, site_url)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO tenants (id) VALUES ($1)
+		ON CONFLICT (id) DO NOTHING
+	`, clientID)
+	return err
+}
+
+// UpsertTenantProject creates or updates a project credential row in tenant_projects.
+// Conflict target is agency_project_id — re-inviting an existing project updates its creds.
+//
+// Before inserting, any placeholder rows for this tenant are removed. A placeholder
+// is a row whose agency_project_id differs from the incoming one AND whose site_url
+// either matches the incoming site_url or is empty — these are rows created by the
+// migration 004 data-copy rather than a real agency-hub registration.
+func (r *Repository) UpsertTenantProject(ctx context.Context,
+	tenantID, projectID, name, siteURL,
+	urlEnc, anonEnc, srEnc, dbURLEnc string,
+) error {
+	// Remove stale migration-created placeholder rows so re-registration doesn't
+	// leave a duplicate "Default"/"My Project" entry alongside the real one.
+	if _, err := r.db.Exec(ctx, `
+		DELETE FROM tenant_projects
+		WHERE tenant_id = $1
+		  AND agency_project_id != $2
+		  AND (site_url IS NULL OR site_url = '' OR site_url = $3)
+	`, tenantID, projectID, siteURL); err != nil {
+		return fmt.Errorf("cleanup placeholder projects: %w", err)
+	}
+
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO tenant_projects
+			(tenant_id, agency_project_id, name, site_url,
+			 supabase_url_encrypted, supabase_anon_encrypted,
+			 supabase_service_role_encrypted, supabase_db_url_encrypted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (agency_project_id) DO UPDATE SET
+			name                            = EXCLUDED.name,
+			site_url                        = EXCLUDED.site_url,
 			supabase_url_encrypted          = EXCLUDED.supabase_url_encrypted,
 			supabase_anon_encrypted         = EXCLUDED.supabase_anon_encrypted,
 			supabase_service_role_encrypted = EXCLUDED.supabase_service_role_encrypted,
-			supabase_db_url_encrypted       = EXCLUDED.supabase_db_url_encrypted,
-			site_url                        = EXCLUDED.site_url
-	`, clientID, urlEnc, anonEnc, srEnc, dbURLEnc, siteURL)
+			supabase_db_url_encrypted       = EXCLUDED.supabase_db_url_encrypted
+	`, tenantID, projectID, name, siteURL, urlEnc, anonEnc, srEnc, dbURLEnc)
 	return err
+}
+
+// GetProjectIDByAgencyID returns the tenant_projects.id (portal UUID) for a given
+// agency_project_id. Used when building the email confirmation record.
+func (r *Repository) GetProjectIDByAgencyID(ctx context.Context, agencyProjectID string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		"SELECT id FROM tenant_projects WHERE agency_project_id = $1 LIMIT 1",
+		agencyProjectID,
+	).Scan(&id)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", fmt.Errorf("project not found for agency_project_id %s", agencyProjectID)
+		}
+		return "", fmt.Errorf("get project id: %w", err)
+	}
+	return id, nil
+}
+
+// GetProjectCredentials returns encrypted credential columns for a tenant_projects row.
+func (r *Repository) GetProjectCredentials(ctx context.Context, projectID string) (
+	urlEnc, anonEnc, srEnc, dbURLEnc, siteURL string, err error,
+) {
+	err = r.db.QueryRow(ctx, `
+		SELECT supabase_url_encrypted, supabase_anon_encrypted,
+		       supabase_service_role_encrypted,
+		       COALESCE(supabase_db_url_encrypted, ''),
+		       COALESCE(site_url, '')
+		FROM tenant_projects WHERE id = $1
+	`, projectID).Scan(&urlEnc, &anonEnc, &srEnc, &dbURLEnc, &siteURL)
+	return
 }
 
 func (r *Repository) TenantExists(ctx context.Context, clientID string) (bool, error) {
@@ -42,27 +106,28 @@ func (r *Repository) TenantExists(ctx context.Context, clientID string) (bool, e
 	return exists, err
 }
 
-func (r *Repository) StoreEmailConfirmation(ctx context.Context, tenantID, email, hash string, expiresAt time.Time) error {
-	// Invalidate any previous unused tokens for this tenant+email so only the latest link works.
+// StoreEmailConfirmation stores a confirmation token scoped to a tenant_projects row.
+// projectID is the tenant_projects.id (portal UUID) — nullable for legacy magic-link logins.
+func (r *Repository) StoreEmailConfirmation(ctx context.Context, tenantID, email, hash string, expiresAt time.Time, projectID *string) error {
 	if _, err := r.db.Exec(ctx, `
 		DELETE FROM email_confirmations WHERE tenant_id = $1 AND email = $2 AND used_at IS NULL
 	`, tenantID, email); err != nil {
 		return err
 	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at)
-		VALUES ($1, $2, $3, $4)
-	`, tenantID, email, hash, expiresAt)
+		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at, project_id)
+		VALUES ($1, $2, $3, $4, $5)
+	`, tenantID, email, hash, expiresAt, projectID)
 	return err
 }
 
 func (r *Repository) GetByTokenHash(ctx context.Context, hash string) (*EmailConfirmation, error) {
 	c := &EmailConfirmation{}
 	err := r.db.QueryRow(ctx, `
-		SELECT id, tenant_id, email, token_hash, expires_at, used_at, created_at
+		SELECT id, tenant_id, email, token_hash, expires_at, used_at, created_at, project_id
 		FROM email_confirmations
 		WHERE token_hash = $1
-	`, hash).Scan(&c.ID, &c.TenantID, &c.Email, &c.TokenHash, &c.ExpiresAt, &c.UsedAt, &c.CreatedAt)
+	`, hash).Scan(&c.ID, &c.TenantID, &c.Email, &c.TokenHash, &c.ExpiresAt, &c.UsedAt, &c.CreatedAt, &c.ProjectID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -70,15 +135,6 @@ func (r *Repository) GetByTokenHash(ctx context.Context, hash string) (*EmailCon
 		return nil, fmt.Errorf("get confirmation: %w", err)
 	}
 	return c, nil
-}
-
-func (r *Repository) GetTenantCredentials(ctx context.Context, tenantID string) (urlEnc, anonEnc, srEnc, siteURL string, err error) {
-	err = r.db.QueryRow(ctx, `
-		SELECT supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted,
-		       COALESCE(site_url, '')
-		FROM tenants WHERE id = $1
-	`, tenantID).Scan(&urlEnc, &anonEnc, &srEnc, &siteURL)
-	return
 }
 
 func (r *Repository) MarkConfirmationUsed(ctx context.Context, id string) error {
@@ -91,6 +147,20 @@ func (r *Repository) MarkTenantOnboarded(ctx context.Context, tenantID string) e
 	_, err := r.db.Exec(ctx,
 		"UPDATE tenants SET onboarded_at = NOW() WHERE id = $1 AND onboarded_at IS NULL", tenantID)
 	return err
+}
+
+// DeleteTenant removes the tenant and all related rows (cascades to tenant_users,
+// tenant_projects, email_confirmations).
+func (r *Repository) DeleteTenant(ctx context.Context, clientID string) error {
+	res, err := r.db.Exec(ctx, `DELETE FROM tenants WHERE id = $1`, clientID)
+	if err != nil {
+		return fmt.Errorf("delete tenant: %w", err)
+	}
+	n := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("tenant not found: %s", clientID)
+	}
+	return nil
 }
 
 func (r *Repository) UpsertTenantUser(ctx context.Context, tenantID, email string) error {

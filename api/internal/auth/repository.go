@@ -18,9 +18,15 @@ type TokenRecord struct {
 	UsedAt    *time.Time
 }
 
-// TenantLookup carries the encrypted credentials needed to build a PortalClaims.
+// TenantLookup carries just the identity fields needed to build a PortalClaims.
+// Credentials now live in tenant_projects — fetched separately when needed.
 type TenantLookup struct {
 	TenantID string
+}
+
+// rawTenantProject holds the encrypted credential columns from tenant_projects.
+type rawTenantProject struct {
+	ID       string
 	URLEnc   string
 	AnonEnc  string
 	SREnc    string
@@ -38,11 +44,12 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 func (r *Repository) GetTenantByEmail(ctx context.Context, email string) (*TenantLookup, error) {
 	t := &TenantLookup{}
 	err := r.db.QueryRow(ctx, `
-		SELECT tu.tenant_id, t.supabase_url_encrypted, t.supabase_anon_encrypted, t.supabase_service_role_encrypted, COALESCE(t.site_url, '')
+		SELECT tu.tenant_id
 		FROM tenant_users tu
 		JOIN tenants t ON t.id = tu.tenant_id
 		WHERE tu.email = $1
-	`, email).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc, &t.SiteURL)
+		LIMIT 1
+	`, email).Scan(&t.TenantID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -89,10 +96,9 @@ func (r *Repository) MarkLoginTokenUsed(ctx context.Context, id string) error {
 
 func (r *Repository) GetTenantByID(ctx context.Context, tenantID string) (*TenantLookup, error) {
 	t := &TenantLookup{}
-	err := r.db.QueryRow(ctx, `
-		SELECT id, supabase_url_encrypted, supabase_anon_encrypted, supabase_service_role_encrypted, COALESCE(site_url, '')
-		FROM tenants WHERE id = $1
-	`, tenantID).Scan(&t.TenantID, &t.URLEnc, &t.AnonEnc, &t.SREnc, &t.SiteURL)
+	err := r.db.QueryRow(ctx,
+		"SELECT id FROM tenants WHERE id = $1", tenantID,
+	).Scan(&t.TenantID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -100,4 +106,41 @@ func (r *Repository) GetTenantByID(ctx context.Context, tenantID string) (*Tenan
 		return nil, fmt.Errorf("get tenant by id: %w", err)
 	}
 	return t, nil
+}
+
+// GetFirstProjectForTenant returns the first tenant_projects row for the given tenant.
+// Used by auth flows that still need Supabase credentials (password auth, token exchange).
+func (r *Repository) GetFirstProjectForTenant(ctx context.Context, tenantID string) (*rawTenantProject, error) {
+	p := &rawTenantProject{}
+	err := r.db.QueryRow(ctx, `
+		SELECT id, supabase_url_encrypted, supabase_anon_encrypted,
+		       supabase_service_role_encrypted, COALESCE(site_url, '')
+		FROM tenant_projects
+		WHERE tenant_id = $1
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, tenantID).Scan(&p.ID, &p.URLEnc, &p.AnonEnc, &p.SREnc, &p.SiteURL)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get first project for tenant: %w", err)
+	}
+	return p, nil
+}
+
+// GetTenantUserID returns the tenant_users.id for a given tenant + email pair.
+// Used to populate UserID in PortalClaims during magic link login.
+func (r *Repository) GetTenantUserID(ctx context.Context, tenantID, email string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx, `
+		SELECT id FROM tenant_users WHERE tenant_id = $1 AND email = $2 LIMIT 1
+	`, tenantID, email).Scan(&id)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", fmt.Errorf("tenant user not found")
+		}
+		return "", fmt.Errorf("get tenant user id: %w", err)
+	}
+	return id, nil
 }

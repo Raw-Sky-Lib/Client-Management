@@ -97,7 +97,7 @@ func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
-	if err := h.svc.SetUserPassword(r.Context(), claims.TenantID, claims.UserID, req.Password); err != nil {
+	if err := h.svc.SetUserPassword(r.Context(), claims.TenantID, claims.Email, req.Password); err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "could not set password, please try again")
 		return
 	}
@@ -166,7 +166,11 @@ func (h *Handler) Exchange(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, err := h.svc.ExchangeToken(r.Context(), req.AccessToken)
 	if err != nil {
-		utils.RespondError(w, http.StatusUnauthorized, "invalid or expired token")
+		if errors.Is(err, ErrInvalidToken) {
+			utils.RespondError(w, http.StatusUnauthorized, "invalid or expired token")
+		} else {
+			utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
+		}
 		return
 	}
 	if err := h.svc.IssueTokenPair(w, claims); err != nil {
@@ -331,17 +335,12 @@ func (h *Handler) ResetPasswordConfirm(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "token and a password of at least 8 characters are required")
 		return
 	}
-	claims, err := h.svc.ConfirmPasswordReset(r.Context(), req.Token, req.Password)
-	if err != nil {
+	if err := h.svc.ConfirmPasswordReset(r.Context(), req.Token, req.Password); err != nil {
 		if errors.Is(err, ErrInvalidToken) {
 			utils.RespondError(w, http.StatusUnauthorized, "this reset link is invalid or has expired")
 			return
 		}
 		utils.RespondError(w, http.StatusInternalServerError, "could not reset password, please try again")
-		return
-	}
-	if err := h.svc.IssueTokenPair(w, claims); err != nil {
-		utils.RespondError(w, http.StatusInternalServerError, "something went wrong")
 		return
 	}
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -391,11 +390,8 @@ func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.RespondJSON(w, http.StatusOK, ProfileResponse{
-		UserID:          claims.UserID,
-		TenantID:        claims.TenantID,
-		Email:           claims.Email,
-		SupabaseURL:     claims.ClientSupabaseURL,
-		SupabaseAnonKey: claims.ClientSupabaseAnonKey,
-		SiteURL:         claims.SiteURL,
+		UserID:   claims.UserID,
+		TenantID: claims.TenantID,
+		Email:    claims.Email,
 	})
 }

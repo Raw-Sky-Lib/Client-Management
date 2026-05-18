@@ -9,6 +9,7 @@ import (
 
 	"github.com/DagMT/client-portal/internal/auth"
 	"github.com/DagMT/client-portal/internal/utils"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -28,45 +29,6 @@ func NewHandler(svc *Service, agencyToken, frontendURL string, jwtIssuer auth.JW
 		frontendURL: frontendURL,
 		jwtIssuer:   jwtIssuer,
 	}
-}
-
-// Connect handles POST /api/onboarding/connect
-//
-// @Summary     Request email confirmation
-// @Description Validates the connection token against agency-hub and sends a confirmation link to the client's email.
-// @Tags        onboarding
-// @Accept      json
-// @Produce     json
-// @Param       X-CSRF-Token header string true "CSRF token from GET /api/auth/csrf (double-submit cookie pattern)"
-// @Param       body         body   ConnectRequest true "Connection request"
-// @Success     200 {object} utils.MessageResponse
-// @Failure     400 {object} utils.ErrorResponse
-// @Failure     403 {object} utils.ErrorResponse "Missing or invalid CSRF token"
-// @Failure     429 {object} utils.ErrorResponse
-// @Failure     500 {object} utils.ErrorResponse
-// @Router      /api/onboarding/connect [post]
-func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
-	var req ConnectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.validate.Struct(req); err != nil {
-		utils.RespondError(w, http.StatusBadRequest, "connection_token and a valid email are required")
-		return
-	}
-	if err := h.svc.Connect(r.Context(), req); err != nil {
-		if isUserFacingErr(err) {
-			utils.RespondError(w, http.StatusBadRequest, err.Error())
-		} else {
-			slog.Error("onboarding connect failed", "error", err)
-			utils.RespondError(w, http.StatusInternalServerError, "something went wrong, please try again")
-		}
-		return
-	}
-	utils.RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "Check your email for a confirmation link.",
-	})
 }
 
 // Confirm handles GET /api/onboarding/confirm
@@ -186,8 +148,42 @@ func (h *Handler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusCreated, map[string]bool{"registered": true})
 }
 
+// DeregisterClient handles DELETE /api/admin/deregister-client/{client_id}
+//
+// @Summary     Deregister a client tenant
+// @Description Deletes all portal data for a client (tenant, users, projects, tokens). Called by agency-hub when a client is permanently deleted.
+// @Tags        admin
+// @Produce     json
+// @Param       Authorization header string true "Bearer {AGENCY_MANAGEMENT_TOKEN}"
+// @Param       client_id     path   string true "Client ID"
+// @Success     200 {object} map[string]bool
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/admin/deregister-client/{client_id} [delete]
+func (h *Handler) DeregisterClient(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	clientID := chi.URLParam(r, "client_id")
+	if clientID == "" {
+		utils.RespondError(w, http.StatusBadRequest, "client_id required")
+		return
+	}
+
+	if err := h.svc.DeregisterClient(r.Context(), clientID); err != nil {
+		slog.Error("deregister client failed", "error", err, "client_id", clientID)
+		// 200 even if not found — idempotent; portal may never have had this client
+		utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
+}
+
 var userFacingErrs = []error{
-	ErrTokenExpired, ErrTokenUsed, ErrTokenInvalid, ErrClientNotSetup,
+	ErrClientNotSetup,
 	ErrLinkInvalid, ErrLinkUsed, ErrLinkExpired,
 }
 

@@ -30,7 +30,7 @@ type Service struct {
 	httpClient  *http.Client
 	mailer      mailer.Mailer
 	frontendURL string
-	publicURL   string // backend's own URL — used in magic link emails
+	publicURL   string
 	encKey      []byte
 	jwtSecret   string
 	accessExp   time.Duration
@@ -63,7 +63,8 @@ func NewService(
 	}
 }
 
-// LoginWithPassword verifies email+password against Supabase Auth and issues a portal JWT pair.
+// LoginWithPassword verifies email+password against the client's first Supabase project
+// and issues a portal JWT pair.
 func (s *Service) LoginWithPassword(ctx context.Context, email, password string) (*PortalClaims, error) {
 	tenant, err := s.repo.GetTenantByEmail(ctx, email)
 	if err != nil {
@@ -73,11 +74,19 @@ func (s *Service) LoginWithPassword(ctx context.Context, email, password string)
 		return nil, ErrInvalidCredentials
 	}
 
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	proj, err := s.repo.GetFirstProjectForTenant(ctx, tenant.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project: %w", err)
+	}
+	if proj == nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt url: %w", err)
 	}
-	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
+	anonKey, err := utils.DecryptString(proj.AnonEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt anon: %w", err)
 	}
@@ -88,12 +97,9 @@ func (s *Service) LoginWithPassword(ctx context.Context, email, password string)
 	}
 
 	return &PortalClaims{
-		UserID:                userID,
-		TenantID:              tenant.TenantID,
-		Email:                 email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               tenant.SiteURL,
+		UserID:   userID,
+		TenantID: tenant.TenantID,
+		Email:    email,
 	}, nil
 }
 
@@ -134,23 +140,26 @@ func (s *Service) verifyPassword(ctx context.Context, supabaseURL, anonKey, emai
 	return result.User.ID, nil
 }
 
-// SetUserPassword updates the user's password in Supabase Auth via the Admin API.
-// Called from the authenticated set-password endpoint (welcome page).
-func (s *Service) SetUserPassword(ctx context.Context, tenantID, userID, password string) error {
-	tenant, err := s.repo.GetTenantByID(ctx, tenantID)
+// SetUserPassword updates the user's password in their first Supabase project.
+func (s *Service) SetUserPassword(ctx context.Context, tenantID, email, password string) error {
+	proj, err := s.repo.GetFirstProjectForTenant(ctx, tenantID)
 	if err != nil {
-		return fmt.Errorf("lookup tenant: %w", err)
+		return fmt.Errorf("lookup project: %w", err)
 	}
-	if tenant == nil {
-		return fmt.Errorf("tenant not found")
+	if proj == nil {
+		return fmt.Errorf("no project found for tenant")
 	}
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt url: %w", err)
 	}
-	serviceRoleKey, err := utils.DecryptString(tenant.SREnc, s.encKey)
+	serviceRoleKey, err := utils.DecryptString(proj.SREnc, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt service role: %w", err)
+	}
+	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, email)
+	if err != nil {
+		return fmt.Errorf("get supabase user: %w", err)
 	}
 	return s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password)
 }
@@ -206,7 +215,6 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 }
 
 // ValidateResetToken checks a reset token is valid without consuming it.
-// Used by the GET /verify redirect — the token is passed to the frontend for the confirm step.
 func (s *Service) ValidateResetToken(ctx context.Context, token string) (bool, error) {
 	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
 	if err != nil {
@@ -218,56 +226,42 @@ func (s *Service) ValidateResetToken(ctx context.Context, token string) (bool, e
 	return true, nil
 }
 
-// ConfirmPasswordReset validates the token, sets the new password, and issues a portal JWT.
-func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password string) (*PortalClaims, error) {
+// ConfirmPasswordReset validates the token and sets the new password.
+// It does not issue a session — the user must sign in after resetting.
+func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password string) error {
 	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
 	if err != nil {
-		return nil, fmt.Errorf("lookup token: %w", err)
+		return fmt.Errorf("lookup token: %w", err)
 	}
 	if rec == nil || rec.UsedAt != nil || time.Now().After(rec.ExpiresAt) {
-		return nil, ErrInvalidToken
+		return ErrInvalidToken
 	}
 
-	tenant, err := s.repo.GetTenantByID(ctx, rec.TenantID)
+	proj, err := s.repo.GetFirstProjectForTenant(ctx, rec.TenantID)
 	if err != nil {
-		return nil, fmt.Errorf("lookup tenant: %w", err)
+		return fmt.Errorf("lookup project: %w", err)
 	}
-	if tenant == nil {
-		return nil, ErrInvalidToken
+	if proj == nil {
+		return ErrInvalidToken
 	}
 
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt url: %w", err)
+		return fmt.Errorf("decrypt url: %w", err)
 	}
-	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
+	serviceRoleKey, err := utils.DecryptString(proj.SREnc, s.encKey)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt anon: %w", err)
-	}
-	serviceRoleKey, err := utils.DecryptString(tenant.SREnc, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt service role: %w", err)
+		return fmt.Errorf("decrypt service role: %w", err)
 	}
 
 	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, rec.Email)
 	if err != nil {
-		return nil, fmt.Errorf("get supabase user: %w", err)
+		return fmt.Errorf("get supabase user: %w", err)
 	}
 	if err := s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password); err != nil {
-		return nil, fmt.Errorf("update password: %w", err)
+		return fmt.Errorf("update password: %w", err)
 	}
-	if err := s.repo.MarkLoginTokenUsed(ctx, rec.ID); err != nil {
-		return nil, fmt.Errorf("mark used: %w", err)
-	}
-
-	return &PortalClaims{
-		UserID:                userID,
-		TenantID:              rec.TenantID,
-		Email:                 rec.Email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               tenant.SiteURL,
-	}, nil
+	return s.repo.MarkLoginTokenUsed(ctx, rec.ID)
 }
 
 // IssueTokenPair implements JWTIssuer — called by the onboarding handler after Confirm.
@@ -285,14 +279,12 @@ func (s *Service) IssueTokenPair(w http.ResponseWriter, claims *PortalClaims) er
 }
 
 // RequestMagicLink generates a portal-native login token and emails a sign-in link.
-// The link points to the backend directly — no Supabase redirect URL configuration required.
 func (s *Service) RequestMagicLink(ctx context.Context, email string) error {
 	tenant, err := s.repo.GetTenantByEmail(ctx, email)
 	if err != nil {
 		return fmt.Errorf("lookup tenant: %w", err)
 	}
 	if tenant == nil {
-		// Silently succeed — don't reveal whether the email is registered.
 		slog.Info("magic link requested for unregistered email", slog.String("email", email))
 		return nil
 	}
@@ -319,7 +311,8 @@ func (s *Service) sendLoginLinkEmail(to, token string) error {
 	)
 }
 
-// VerifyLoginToken validates a portal magic-link token, issues a session, and returns the claims.
+// VerifyLoginToken validates a portal magic-link token and issues a session.
+// UserID is set to the tenant_users.id (portal UUID) — no Supabase roundtrip needed.
 func (s *Service) VerifyLoginToken(ctx context.Context, token string) (*PortalClaims, error) {
 	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
 	if err != nil {
@@ -331,28 +324,15 @@ func (s *Service) VerifyLoginToken(ctx context.Context, token string) (*PortalCl
 
 	tenant, err := s.repo.GetTenantByID(ctx, rec.TenantID)
 	if err != nil {
-		return nil, fmt.Errorf("lookup tenant: %w", err)
+		return nil, fmt.Errorf("verify tenant: %w", err)
 	}
 	if tenant == nil {
 		return nil, ErrInvalidToken
 	}
 
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	userID, err := s.repo.GetTenantUserID(ctx, rec.TenantID, rec.Email)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt url: %w", err)
-	}
-	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt anon: %w", err)
-	}
-	serviceRoleKey, err := utils.DecryptString(tenant.SREnc, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt service role: %w", err)
-	}
-
-	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, rec.Email)
-	if err != nil {
-		return nil, fmt.Errorf("get supabase user: %w", err)
+		return nil, fmt.Errorf("get user id: %w", err)
 	}
 
 	if err := s.repo.MarkLoginTokenUsed(ctx, rec.ID); err != nil {
@@ -360,12 +340,9 @@ func (s *Service) VerifyLoginToken(ctx context.Context, token string) (*PortalCl
 	}
 
 	return &PortalClaims{
-		UserID:                userID,
-		TenantID:              rec.TenantID,
-		Email:                 rec.Email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               tenant.SiteURL,
+		UserID:   userID,
+		TenantID: rec.TenantID,
+		Email:    rec.Email,
 	}, nil
 }
 
@@ -398,31 +375,8 @@ func (s *Service) getSupabaseUserByEmail(ctx context.Context, supabaseURL, servi
 	return result.Users[0].ID, nil
 }
 
-func generateToken() (plaintext, hash string, err error) {
-	plaintext, err = randomHex(32)
-	if err != nil {
-		return
-	}
-	hash = hashToken(plaintext)
-	return
-}
-
-func randomHex(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-func hashToken(plaintext string) string {
-	h := sha256.Sum256([]byte(plaintext))
-	return fmt.Sprintf("%x", h)
-}
-
 // ExchangeToken verifies a Supabase access token and issues a portal JWT pair.
 func (s *Service) ExchangeToken(ctx context.Context, supabaseToken string) (*PortalClaims, error) {
-	// Decode (without verifying) to extract email for the tenant lookup.
 	rawClaims := jwt.MapClaims{}
 	if _, _, err := jwt.NewParser().ParseUnverified(supabaseToken, rawClaims); err != nil {
 		return nil, ErrInvalidToken
@@ -440,32 +394,32 @@ func (s *Service) ExchangeToken(ctx context.Context, supabaseToken string) (*Por
 		return nil, ErrInvalidToken
 	}
 
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
+	proj, err := s.repo.GetFirstProjectForTenant(ctx, tenant.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project: %w", err)
+	}
+	if proj == nil {
+		return nil, ErrInvalidToken
+	}
+
+	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt url: %w", err)
 	}
-	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt anon: %w", err)
-	}
-	serviceRoleKey, err := utils.DecryptString(tenant.SREnc, s.encKey)
+	serviceRoleKey, err := utils.DecryptString(proj.SREnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt service role: %w", err)
 	}
 
-	// Verify the Supabase token is legitimate by calling /auth/v1/user.
 	userID, err := s.verifySupabaseToken(ctx, supabaseURL, serviceRoleKey, supabaseToken)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PortalClaims{
-		UserID:                userID,
-		TenantID:              tenant.TenantID,
-		Email:                 email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               tenant.SiteURL,
+		UserID:   userID,
+		TenantID: tenant.TenantID,
+		Email:    email,
 	}, nil
 }
 
@@ -503,7 +457,9 @@ func (s *Service) verifySupabaseToken(ctx context.Context, supabaseURL, serviceR
 	return user.ID, nil
 }
 
-// RefreshAccessToken parses a refresh token and re-issues an access token.
+// RefreshAccessToken parses a refresh token, verifies the tenant still exists,
+// and re-issues a lean access token. The tenant check ensures deleted clients
+// cannot continue refreshing after deregistration.
 func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (string, error) {
 	claims := &RefreshClaims{}
 	_, err := jwt.ParseWithClaims(refreshToken, claims, func(t *jwt.Token) (any, error) {
@@ -517,29 +473,14 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 	}
 
 	tenant, err := s.repo.GetTenantByID(ctx, claims.TenantID)
-	if err != nil {
-		return "", fmt.Errorf("lookup tenant: %w", err)
-	}
-	if tenant == nil {
+	if err != nil || tenant == nil {
 		return "", ErrInvalidToken
 	}
 
-	supabaseURL, err := utils.DecryptString(tenant.URLEnc, s.encKey)
-	if err != nil {
-		return "", fmt.Errorf("decrypt url: %w", err)
-	}
-	anonKey, err := utils.DecryptString(tenant.AnonEnc, s.encKey)
-	if err != nil {
-		return "", fmt.Errorf("decrypt anon: %w", err)
-	}
-
 	return s.issueAccessToken(&PortalClaims{
-		UserID:                claims.UserID,
-		TenantID:              claims.TenantID,
-		Email:                 claims.Email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               tenant.SiteURL,
+		UserID:   claims.UserID,
+		TenantID: claims.TenantID,
+		Email:    claims.Email,
 	})
 }
 
@@ -568,4 +509,26 @@ func (s *Service) issueRefreshToken(userID, tenantID, email string) (string, err
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.jwtSecret))
+}
+
+func generateToken() (plaintext, hash string, err error) {
+	plaintext, err = randomHex(32)
+	if err != nil {
+		return
+	}
+	hash = hashToken(plaintext)
+	return
+}
+
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func hashToken(plaintext string) string {
+	h := sha256.Sum256([]byte(plaintext))
+	return fmt.Sprintf("%x", h)
 }

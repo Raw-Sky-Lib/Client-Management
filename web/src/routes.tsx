@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { GuestRoute } from '@/components/guards/GuestRoute'
 import { ProtectedRoute } from '@/components/guards/ProtectedRoute'
 import { PortalLayout } from '@/components/layout/portal-layout'
-import { ConnectPage } from '@/features/onboarding/connect-page'
 import { WelcomePage } from '@/features/onboarding/welcome-page'
 import { LinkErrorPage } from '@/features/onboarding/link-error-page'
 import { LoginPage } from '@/features/auth/login-page'
@@ -19,13 +18,6 @@ import { FormsPage } from '@/features/forms/forms-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { DashboardPage } from '@/features/dashboard/dashboard-page'
 
-// Placeholders — replaced as each milestone builds the real component
-const Placeholder = ({ name }: { name: string }) => (
-  <div className="flex min-h-svh items-center justify-center bg-gray-50">
-    <p className="text-sm text-gray-400">{name}</p>
-  </div>
-)
-
 export const router = createBrowserRouter([
   {
     index: true,
@@ -36,8 +28,7 @@ export const router = createBrowserRouter([
   {
     element: <GuestRoute />,
     children: [
-      { path: '/login',   element: <LoginPage /> },
-      { path: '/connect', element: <ConnectPage /> },
+      { path: '/login', element: <LoginPage /> },
     ],
   },
 

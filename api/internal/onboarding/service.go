@@ -20,9 +20,6 @@ import (
 )
 
 var (
-	ErrTokenExpired   = errors.New("Your access code has expired. Ask your website team for a new one.")
-	ErrTokenUsed      = errors.New("This access code has already been used. Contact your website team.")
-	ErrTokenInvalid   = errors.New("Invalid access code. Check for typos and try again.")
 	ErrClientNotSetup = errors.New("This client is not set up in the portal yet. Contact your website team.")
 	ErrLinkInvalid    = errors.New("Invalid or expired confirmation link.")
 	ErrLinkUsed       = errors.New("This confirmation link has already been used.")
@@ -36,8 +33,8 @@ type Service struct {
 	agencyURL   string
 	agencyToken string
 	encKey      []byte
-	publicURL   string // backend's own URL — confirmation email links point here
-	frontendURL string // frontend URL — post-confirm redirect target
+	publicURL   string
+	frontendURL string
 }
 
 func NewService(
@@ -60,19 +57,13 @@ func NewService(
 	}
 }
 
-func (s *Service) ResendInvite(ctx context.Context, clientID, email string) error {
-	exists, err := s.repo.TenantExists(ctx, clientID)
-	if err != nil {
-		return fmt.Errorf("check tenant: %w", err)
-	}
-	if !exists {
-		return ErrClientNotSetup
-	}
-	return s.sendInvite(ctx, clientID, email)
-}
-
+// RegisterClient is called by agency-hub to register a project with the portal.
+// It:
+//  1. UPSERTs the tenant identity row
+//  2. Validates + migrates the client's Supabase project
+//  3. Encrypts and stores credentials in tenant_projects
+//  4. Sends an invite email so the client can access their dashboard
 func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest) error {
-	// Strip trailing /rest/v1 or /rest/v1/ that callers sometimes include.
 	req.ClientSupabaseURL = strings.TrimRight(strings.TrimSuffix(
 		strings.TrimRight(req.ClientSupabaseURL, "/"), "/rest/v1"), "/")
 
@@ -83,13 +74,11 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 		return fmt.Errorf("client db migration: %w", err)
 	}
 
-	// Create the client's default storage bucket (named from their site URL).
-	// Fire-and-forget — a failed bucket creation shouldn't block onboarding.
 	bucketName := bucketNameFromSiteURL(req.SiteURL)
 	if err := s.createDefaultBucket(ctx, req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey, bucketName); err != nil {
-		// Log but don't fail — bucket may already exist, or Storage not yet enabled.
-		_ = err
+		_ = err // fire-and-forget
 	}
+
 	urlEnc, err := utils.EncryptString(req.ClientSupabaseURL, s.encKey)
 	if err != nil {
 		return err
@@ -106,19 +95,77 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	if err != nil {
 		return err
 	}
-	if err := s.repo.UpsertTenant(ctx, req.ClientID, urlEnc, anonEnc, srEnc, dbEnc, req.SiteURL); err != nil {
-		return err
+
+	// 1. Tenant identity (idempotent — existing tenants are unchanged)
+	if err := s.repo.UpsertTenant(ctx, req.ClientID); err != nil {
+		return fmt.Errorf("upsert tenant: %w", err)
 	}
-	// Auto-send invite email so the client can access their dashboard without a connection token.
-	return s.sendInvite(ctx, req.ClientID, req.Email)
+
+	// 2. Project credentials
+	if err := s.repo.UpsertTenantProject(ctx,
+		req.ClientID, req.ProjectID, req.ProjectName, req.SiteURL,
+		urlEnc, anonEnc, srEnc, dbEnc,
+	); err != nil {
+		return fmt.Errorf("upsert tenant project: %w", err)
+	}
+
+	// 3. Upsert tenant_users so magic-link login works immediately
+	if err := s.repo.UpsertTenantUser(ctx, req.ClientID, req.Email); err != nil {
+		return fmt.Errorf("upsert tenant user: %w", err)
+	}
+
+	// 4. Resolve the portal project UUID and send the invite
+	portalProjectID, err := s.repo.GetProjectIDByAgencyID(ctx, req.ProjectID)
+	if err != nil {
+		return fmt.Errorf("resolve portal project id: %w", err)
+	}
+	return s.sendInvite(ctx, req.ClientID, req.Email, portalProjectID)
 }
 
-func (s *Service) sendInvite(ctx context.Context, tenantID, email string) error {
+// ResendInvite re-sends an invite email for an existing tenant.
+// It picks the first registered project for the tenant.
+func (s *Service) ResendInvite(ctx context.Context, clientID, email string) error {
+	exists, err := s.repo.TenantExists(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("check tenant: %w", err)
+	}
+	if !exists {
+		return ErrClientNotSetup
+	}
+	// Find the first project for this tenant to scope the invite.
+	projectID, err := s.getFirstProjectIDForTenant(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("find project for resend: %w", err)
+	}
+	return s.sendInvite(ctx, clientID, email, projectID)
+}
+
+// DeregisterClient removes all portal data for a client so they can no longer
+// log in. Called by agency-hub when a client is permanently deleted.
+func (s *Service) DeregisterClient(ctx context.Context, clientID string) error {
+	if err := s.repo.DeleteTenant(ctx, clientID); err != nil {
+		return fmt.Errorf("deregister client: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) getFirstProjectIDForTenant(ctx context.Context, tenantID string) (string, error) {
+	var id string
+	err := s.repo.db.QueryRow(ctx, `
+		SELECT id FROM tenant_projects WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT 1
+	`, tenantID).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("no project found for tenant %s", tenantID)
+	}
+	return id, nil
+}
+
+func (s *Service) sendInvite(ctx context.Context, tenantID, email, projectID string) error {
 	plaintext, hash, err := generateToken()
 	if err != nil {
 		return fmt.Errorf("generate invite token: %w", err)
 	}
-	if err := s.repo.StoreEmailConfirmation(ctx, tenantID, email, hash, time.Now().Add(72*time.Hour)); err != nil {
+	if err := s.repo.StoreEmailConfirmation(ctx, tenantID, email, hash, time.Now().Add(72*time.Hour), &projectID); err != nil {
 		return fmt.Errorf("store invite: %w", err)
 	}
 	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, plaintext)
@@ -132,29 +179,8 @@ func (s *Service) sendInvite(ctx context.Context, tenantID, email string) error 
 	)
 }
 
-func (s *Service) Connect(ctx context.Context, req ConnectRequest) error {
-	// Validate without consuming — token stays usable if a downstream step fails.
-	clientID, err := s.validateConnectionToken(ctx, req.ConnectionToken, req.Email)
-	if err != nil {
-		return err
-	}
-	exists, err := s.repo.TenantExists(ctx, clientID)
-	if err != nil {
-		return fmt.Errorf("check tenant: %w", err)
-	}
-	if !exists {
-		return ErrClientNotSetup
-	}
-	plaintext, hash, err := generateToken()
-	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
-	}
-	if err := s.repo.StoreEmailConfirmation(ctx, clientID, req.Email, hash, time.Now().Add(24*time.Hour)); err != nil {
-		return fmt.Errorf("store confirmation: %w", err)
-	}
-	return s.sendConfirmationEmail(req.Email, plaintext)
-}
-
+// Confirm verifies the emailed token, creates the Supabase auth user, and returns
+// lean PortalClaims (no credentials embedded — frontend fetches those via GET /api/projects).
 func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims, error) {
 	conf, err := s.repo.GetByTokenHash(ctx, hashToken(token))
 	if err != nil {
@@ -169,23 +195,23 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 	if time.Now().After(conf.ExpiresAt) {
 		return nil, ErrLinkExpired
 	}
+	if conf.ProjectID == nil {
+		return nil, fmt.Errorf("confirmation has no project — cannot provision Supabase user")
+	}
 
-	urlEnc, anonEnc, srEnc, siteURL, err := s.repo.GetTenantCredentials(ctx, conf.TenantID)
+	urlEnc, anonEnc, srEnc, _, _, err := s.repo.GetProjectCredentials(ctx, *conf.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("fetch credentials: %w", err)
+		return nil, fmt.Errorf("fetch project credentials: %w", err)
 	}
 	supabaseURL, err := utils.DecryptString(urlEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt url: %w", err)
 	}
-	anonKey, err := utils.DecryptString(anonEnc, s.encKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt anon: %w", err)
-	}
 	serviceRoleKey, err := utils.DecryptString(srEnc, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt service role: %w", err)
 	}
+	_ = anonEnc // not needed here; frontend fetches via GET /api/projects
 
 	userID, err := s.createSupabaseUser(ctx, supabaseURL, serviceRoleKey, conf.Email)
 	if err != nil {
@@ -203,47 +229,12 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 	}
 
 	return &auth.PortalClaims{
-		UserID:                userID,
-		TenantID:              conf.TenantID,
-		Email:                 conf.Email,
-		ClientSupabaseURL:     supabaseURL,
-		ClientSupabaseAnonKey: anonKey,
-		SiteURL:               siteURL,
+		UserID:   userID,
+		TenantID: conf.TenantID,
+		Email:    conf.Email,
 	}, nil
 }
 
-func (s *Service) validateConnectionToken(ctx context.Context, token, email string) (string, error) {
-	body, _ := json.Marshal(map[string]string{"token": token, "email": email})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.agencyURL+"/api/validate-connection-token", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.agencyToken)
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("call agency-hub: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result validateTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response (status %d): %w", resp.StatusCode, err)
-	}
-	if !result.Valid {
-		switch result.Reason {
-		case "expired":
-			return "", ErrTokenExpired
-		case "used":
-			return "", ErrTokenUsed
-		default:
-			return "", ErrTokenInvalid
-		}
-	}
-	return result.ClientID, nil
-}
 
 func (s *Service) createSupabaseUser(ctx context.Context, supabaseURL, serviceRoleKey, email string) (string, error) {
 	pw, err := randomHex(32)
@@ -270,7 +261,6 @@ func (s *Service) createSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 	}
 	defer resp.Body.Close()
 
-	// User already exists — look them up rather than failing.
 	if resp.StatusCode == http.StatusUnprocessableEntity {
 		return s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, email)
 	}
@@ -316,8 +306,6 @@ func (s *Service) getSupabaseUserByEmail(ctx context.Context, supabaseURL, servi
 	return result.Users[0].ID, nil
 }
 
-// bucketNameFromSiteURL derives a valid Supabase bucket name from the client's site URL.
-// e.g. "https://acmecorp.com" → "acmecorp-com"
 func bucketNameFromSiteURL(siteURL string) string {
 	u, err := url.Parse(siteURL)
 	if err != nil || u.Hostname() == "" {
@@ -341,8 +329,6 @@ func bucketNameFromSiteURL(siteURL string) string {
 	return name
 }
 
-// createDefaultBucket creates a public storage bucket in the client's Supabase project.
-// A 409 conflict means the bucket already exists — treated as success.
 func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceRoleKey, bucketName string) error {
 	body, _ := json.Marshal(map[string]any{
 		"id":     bucketName,
@@ -364,7 +350,7 @@ func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceR
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusConflict {
-		return nil // already exists
+		return nil
 	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("create bucket returned %d", resp.StatusCode)
@@ -372,17 +358,6 @@ func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceR
 	return nil
 }
 
-func (s *Service) sendConfirmationEmail(to, token string) error {
-	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, token)
-	return s.mailer.Send(context.Background(), to,
-		"Confirm your email to access your dashboard",
-		fmt.Sprintf(`
-			<p>Click the link below to access your dashboard:</p>
-			<p><a href="%s">Confirm your email →</a></p>
-			<p>This link expires in 24 hours.</p>
-		`, link),
-	)
-}
 
 func generateToken() (plaintext, hash string, err error) {
 	plaintext, err = randomHex(32)

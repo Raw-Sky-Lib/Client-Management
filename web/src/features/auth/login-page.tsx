@@ -140,12 +140,6 @@ function PasswordForm({ onReset }: { onReset: () => void }) {
           </button>
         </div>
 
-        <p className="font-mono text-xs text-ink opacity-40 text-center">
-          First time?{' '}
-          <a href="/connect" className="underline opacity-70 hover:opacity-100 transition">
-            Use your access code
-          </a>
-        </p>
       </form>
     </HardShadowCard>
   )
