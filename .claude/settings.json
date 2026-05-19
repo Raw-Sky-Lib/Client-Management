@@ -45,7 +45,15 @@
       "Bash(PGPASSWORD=prodagencyhub psql 'host=aws-0-eu-west-1.pooler.supabase.com port=5432 dbname=postgres user=postgres.urmzpmpbocqsaraiyqbo sslmode=require' -c '\\\\d projects')",
       "Bash(PGPASSWORD=prodagencyhub psql 'host=aws-0-eu-west-1.pooler.supabase.com port=5432 dbname=postgres user=postgres.urmzpmpbocqsaraiyqbo sslmode=require' -c '\\\\d clients')",
       "Bash(psql \"host=aws-0-eu-west-1.pooler.supabase.com port=5432 dbname=postgres user=postgres.urmzpmpbocqsaraiyqbo sslmode=require password=prodagencyhub\" -f supabase/migrations/017_project_deploy_columns.sql)",
-      "Bash(exit 0)"
+      "Bash(exit 0)",
+      "Bash(git -C \"/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub\" status --short)",
+      "Bash(git -C \"/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub\" status)",
+      "Bash(git -C \"/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub\" log --oneline -5)",
+      "Bash(git -C \"/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub\" show 0fa9008 -- web/src/features/clients/pages/ClientDetailPage.tsx)",
+      "Bash(PGPASSWORD=prodagencyhub psql \"host=aws-0-eu-west-1.pooler.supabase.com port=5432 dbname=postgres user=postgres.urmzpmpbocqsaraiyqbo sslmode=require\" -c \"ALTER TABLE clients ADD COLUMN IF NOT EXISTS portal_invite_sent_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS portal_onboarded_at TIMESTAMPTZ;\")",
+      "Bash(PGPASSWORD=prodagencyhub psql 'host=aws-0-eu-west-1.pooler.supabase.com port=5432 dbname=postgres user=postgres.urmzpmpbocqsaraiyqbo sslmode=require' -c 'DELETE FROM projects; DELETE FROM clients;')",
+      "Bash(PGPASSWORD=prodagencyhub psql 'host=aws-0-eu-west-1.pooler.supabase.com port=6543 user=postgres.tgysvlfdsxjglbneeulx dbname=postgres sslmode=require' -c 'DELETE FROM tenants;')",
+      "Bash(bash -c 'cd \"/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web\" && node_modules/.bin/tsc --noEmit 2>&1 | head -60')"
     ],
     "additionalDirectories": [
       "/Users/dagi/Documents/Github/Matt x Dagim/format-studio-client-site-template/supabase/migrations",
@@ -67,7 +75,8 @@
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/projects/services",
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/projects/hooks",
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/projects/components",
-      "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/projects/pages"
+      "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/projects/pages",
+      "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/clients/types"
     ]
   }
 }

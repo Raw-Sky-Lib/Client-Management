@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import { GuestRoute } from '@/components/guards/GuestRoute'
 import { ProtectedRoute } from '@/components/guards/ProtectedRoute'
+import { AuthOnlyRoute } from '@/components/guards/AuthOnlyRoute'
 import { PortalLayout } from '@/components/layout/portal-layout'
 import { WelcomePage } from '@/features/onboarding/welcome-page'
 import { LinkErrorPage } from '@/features/onboarding/link-error-page'
@@ -50,13 +51,18 @@ export const router = createBrowserRouter([
     element: <ResetPasswordPage />,
   },
 
+  // Welcome — auth only, no SupabaseProvider (client may have no project yet)
+  {
+    element: <AuthOnlyRoute />,
+    children: [
+      { path: '/welcome', element: <WelcomePage /> },
+    ],
+  },
+
   // ─── Protected routes ─────────────────────────────────────────────────────
   {
     element: <ProtectedRoute />,
     children: [
-      // Welcome / onboarding-complete — own layout, no sidebar
-      { path: '/welcome', element: <WelcomePage /> },
-
       {
         element: <PortalLayout />,
         children: [

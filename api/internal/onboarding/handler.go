@@ -69,6 +69,43 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, h.frontendURL+"/welcome", http.StatusTemporaryRedirect)
 }
 
+// SendInvite handles POST /api/admin/send-invite
+//
+// @Summary     Send portal invite to a client
+// @Description Creates the tenant record if needed and sends a magic-link invite. No Supabase credentials required. Called by agency-hub from the client page.
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Param       Authorization header string true "Bearer {AGENCY_MANAGEMENT_TOKEN}"
+// @Param       body          body   ResendInviteRequest true "Client ID and email"
+// @Success     200 {object} map[string]bool
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/admin/send-invite [post]
+func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req ResendInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.svc.SendClientInvite(r.Context(), req.ClientID, req.Email); err != nil {
+		slog.Error("send invite failed", "error", err)
+		utils.RespondError(w, http.StatusInternalServerError, "failed to send invite")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"sent": true})
+}
+
 // ResendInvite handles POST /api/admin/resend-invite
 //
 // @Summary     Resend onboarding invite email

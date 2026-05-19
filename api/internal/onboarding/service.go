@@ -114,16 +114,29 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 		return fmt.Errorf("upsert tenant user: %w", err)
 	}
 
-	// 4. Resolve the portal project UUID and send the invite
-	portalProjectID, err := s.repo.GetProjectIDByAgencyID(ctx, req.ProjectID)
-	if err != nil {
-		return fmt.Errorf("resolve portal project id: %w", err)
+	// 4. Create Supabase auth user so the client can use CMS RLS queries.
+	// Non-fatal — client can still log in if this fails.
+	if _, err := s.createSupabaseUser(ctx, req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey, req.Email); err != nil {
+		_ = err
 	}
-	return s.sendInvite(ctx, req.ClientID, req.Email, portalProjectID)
+	return nil
+}
+
+// SendClientInvite sends the portal invite for a client without requiring a project.
+// It creates the tenant row if it doesn't exist, upserts the tenant user, then
+// sends the magic-link email. No Supabase credentials required.
+func (s *Service) SendClientInvite(ctx context.Context, clientID, email string) error {
+	if err := s.repo.UpsertTenant(ctx, clientID); err != nil {
+		return fmt.Errorf("upsert tenant: %w", err)
+	}
+	if err := s.repo.UpsertTenantUser(ctx, clientID, email); err != nil {
+		return fmt.Errorf("upsert tenant user: %w", err)
+	}
+	return s.sendInvite(ctx, clientID, email, nil)
 }
 
 // ResendInvite re-sends an invite email for an existing tenant.
-// It picks the first registered project for the tenant.
+// It picks the first registered project for the tenant if available.
 func (s *Service) ResendInvite(ctx context.Context, clientID, email string) error {
 	exists, err := s.repo.TenantExists(ctx, clientID)
 	if err != nil {
@@ -132,12 +145,12 @@ func (s *Service) ResendInvite(ctx context.Context, clientID, email string) erro
 	if !exists {
 		return ErrClientNotSetup
 	}
-	// Find the first project for this tenant to scope the invite.
+	// Try to scope to the first project; fall back to project-less invite.
 	projectID, err := s.getFirstProjectIDForTenant(ctx, clientID)
 	if err != nil {
-		return fmt.Errorf("find project for resend: %w", err)
+		return s.sendInvite(ctx, clientID, email, nil)
 	}
-	return s.sendInvite(ctx, clientID, email, projectID)
+	return s.sendInvite(ctx, clientID, email, &projectID)
 }
 
 // DeregisterClient removes all portal data for a client so they can no longer
@@ -160,12 +173,12 @@ func (s *Service) getFirstProjectIDForTenant(ctx context.Context, tenantID strin
 	return id, nil
 }
 
-func (s *Service) sendInvite(ctx context.Context, tenantID, email, projectID string) error {
+func (s *Service) sendInvite(ctx context.Context, tenantID, email string, projectID *string) error {
 	plaintext, hash, err := generateToken()
 	if err != nil {
 		return fmt.Errorf("generate invite token: %w", err)
 	}
-	if err := s.repo.StoreEmailConfirmation(ctx, tenantID, email, hash, time.Now().Add(72*time.Hour), &projectID); err != nil {
+	if err := s.repo.StoreEmailConfirmation(ctx, tenantID, email, hash, time.Now().Add(72*time.Hour), projectID); err != nil {
 		return fmt.Errorf("store invite: %w", err)
 	}
 	link := fmt.Sprintf("%s/api/onboarding/confirm?token=%s", s.publicURL, plaintext)
@@ -196,7 +209,24 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 		return nil, ErrLinkExpired
 	}
 	if conf.ProjectID == nil {
-		return nil, fmt.Errorf("confirmation has no project — cannot provision Supabase user")
+		// Client was invited before any project was configured — issue JWT using
+		// tenant_users.id as the user identity; no Supabase provisioning needed.
+		userID, err := s.repo.GetTenantUserID(ctx, conf.TenantID, conf.Email)
+		if err != nil {
+			return nil, fmt.Errorf("get tenant user: %w", err)
+		}
+		if err := s.repo.MarkConfirmationUsed(ctx, conf.ID); err != nil {
+			return nil, fmt.Errorf("mark used: %w", err)
+		}
+		if err := s.repo.MarkTenantOnboarded(ctx, conf.TenantID); err != nil {
+			return nil, fmt.Errorf("mark onboarded: %w", err)
+		}
+		s.notifyAgencyOnboarded(conf.TenantID)
+		return &auth.PortalClaims{
+			UserID:   userID,
+			TenantID: conf.TenantID,
+			Email:    conf.Email,
+		}, nil
 	}
 
 	urlEnc, anonEnc, srEnc, _, _, err := s.repo.GetProjectCredentials(ctx, *conf.ProjectID)
@@ -227,7 +257,7 @@ func (s *Service) Confirm(ctx context.Context, token string) (*auth.PortalClaims
 	if err := s.repo.UpsertTenantUser(ctx, conf.TenantID, conf.Email); err != nil {
 		return nil, fmt.Errorf("upsert tenant user: %w", err)
 	}
-
+	s.notifyAgencyOnboarded(conf.TenantID)
 	return &auth.PortalClaims{
 		UserID:   userID,
 		TenantID: conf.TenantID,
@@ -358,6 +388,29 @@ func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceR
 	return nil
 }
 
+
+// notifyAgencyOnboarded calls agency-hub to set portal_onboarded_at on the client record.
+// Fire-and-forget — never fails the confirm flow.
+func (s *Service) notifyAgencyOnboarded(tenantID string) {
+	if s.agencyURL == "" || s.agencyToken == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		endpoint := strings.TrimRight(s.agencyURL, "/") + "/api/clients/" + tenantID + "/portal-onboarded"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+s.agencyToken)
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		resp.Body.Close()
+	}()
+}
 
 func generateToken() (plaintext, hash string, err error) {
 	plaintext, err = randomHex(32)

@@ -16,6 +16,7 @@ func Routes(h *Handler, rdb *redis.Client) func(chi.Router) {
 func AdminRoutes(h *Handler) func(chi.Router) {
 	return func(r chi.Router) {
 		r.Post("/register-client", h.RegisterClient)
+		r.Post("/send-invite", h.SendInvite)
 		r.Post("/resend-invite", h.ResendInvite)
 		r.Delete("/deregister-client/{client_id}", h.DeregisterClient)
 	}

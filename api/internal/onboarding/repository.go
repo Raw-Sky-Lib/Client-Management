@@ -172,6 +172,20 @@ func (r *Repository) UpsertTenantUser(ctx context.Context, tenantID, email strin
 	return err
 }
 
+// GetTenantUserID returns the tenant_users.id for a given tenant + email.
+// Used when confirming an invite that has no project yet.
+func (r *Repository) GetTenantUserID(ctx context.Context, tenantID, email string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx,
+		"SELECT id FROM tenant_users WHERE tenant_id = $1 AND email = $2 LIMIT 1",
+		tenantID, email,
+	).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("get tenant user id: %w", err)
+	}
+	return id, nil
+}
+
 func hashToken(plaintext string) string {
 	h := sha256.Sum256([]byte(plaintext))
 	return fmt.Sprintf("%x", h)
