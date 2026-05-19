@@ -1,20 +1,23 @@
 # CLAUDE.md — client-portal
-> Multi-tenant client management dashboard. Agency-branded. One deployment, all clients.
-> Clients manage their website content (pages, blog, media, SEO, form submissions) from here.
-> Stack: Go 1.24+ backend · React 19 + Vite frontend · Supabase (portal's own + per-tenant)
+> Multi-tenant CMS dashboard. One deployment serves all agency clients.
+> Each client is isolated in their own Supabase project.
+> Stack: Go 1.24+ backend · React 19 + Vite frontend · Supabase
 
 ---
 
 ## What This App Is
 
-client-portal is the CMS dashboard that agency clients use to manage their website content. It is multi-tenant — one hosted instance serves all clients, each isolated by their own Supabase project.
+client-portal is the CMS dashboard that agency clients use to manage their website content — pages, blog posts, media, form submissions, settings, and an AI writing assistant. It is multi-tenant: one hosted instance serves every client, each reading/writing their own Supabase project.
 
-The portal backend is a thin authority layer:
-- Validates onboarding tokens with agency-hub
+**The portal backend is a thin authority layer.** It:
+- Registers tenants and stores their encrypted Supabase credentials (pushed by agency-hub)
+- Sends onboarding invite emails and handles the magic-link auth flow
+- Issues the portal JWT and validates sessions
 - Proxies Claude API calls (API key never reaches the browser)
-- Triggers ISR revalidation on the client-site after every content update
+- Triggers ISR revalidation on the client's live site after content updates
+- Runs DB migrations on the client's Supabase on first registration
 
-All CMS data (pages, posts, media, settings) lives in each client's own Supabase project. The portal reads and writes it directly from the React frontend using the Supabase JS client — the Go backend only handles operations that require server-side authority.
+The React frontend does all CMS reads and writes directly to the client's Supabase via the JS client, using the anon key and RLS.
 
 ---
 
@@ -22,282 +25,219 @@ All CMS data (pages, posts, media, settings) lives in each client's own Supabase
 
 **Backend (`api/`)**
 - Go 1.24+ · Chi v5
-- PostgreSQL via Supabase (portal's own project — tenant registry + sessions only)
+- PostgreSQL via Supabase (portal's own project — tenant registry only, not CMS)
+- pgx/v5 connection pool
 - JWT: 15-min access, 7-day refresh, HTTP-only cookies
-- Upstash Redis: rate limiting + Claude per-client rate limits (minute + hour windows)
-- Resend: email confirmation on onboarding
-- Anthropic SDK (Go): Claude Haiku — content assistant proxy
-- Swagger (swag) · slog · go-playground/validator v10
+- Upstash Redis: rate limiting (sliding window, auth + Claude)
+- Resend / Brevo (pluggable via `MAILER_PROVIDER` env var): onboarding invite email
+- Anthropic Go SDK: Claude Haiku — content assistant proxy
+- slog: structured logging · go-playground/validator v10
 
 **Frontend (`web/`)**
-- React 19 · TypeScript (strict) · Vite
+- React 19 · TypeScript (strict) · Vite · port 5174
 - Tailwind CSS v4 · shadcn/ui · Radix UI
 - TanStack Query v5 · React Router v7
 - React Hook Form + Zod · Framer Motion · Sonner · Lucide React
-- Supabase JS client (client-side, anon key — per-tenant, initialized per session)
+- Supabase JS client (per-tenant, initialised per active project)
 - Tiptap: rich text editor for blog posts
 
 ---
 
-## Two Connections — Always in Mind
-
-Every feature touches one of two databases. Never mix them.
+## Two Connections — Never Mix Them
 
 ```
-Connection A — Agency-hub API
-  Used for: token validation on onboarding, startup management token check, Claude usage recording
-  How: HTTP calls to agency-hub backend (AGENCY_API_URL)
-  Auth: Authorization: Bearer AGENCY_MANAGEMENT_TOKEN + X-Client-ID header
-  NOT used for: any CMS content read/write
+Connection A — Portal backend API  (axios at /api/*)
+  Used for: auth (login, magic link, JWT), projects list, Claude proxy, ISR trigger
+  Auth: portal JWT in HTTP-only cookie
+  NOT used for: reading or writing CMS content
 
-Connection B — Client's Supabase project
-  Used for: all CMS content (pages, posts, media, settings, form submissions)
-  How: Supabase JS client initialized with CLIENT_SUPABASE_URL + CLIENT_SUPABASE_ANON_KEY
-  Frontend reads/writes: anon key with RLS
-  Backend writes: service role key (stored encrypted in portal DB, never returned in responses)
-  NOT used for: portal auth or session management
+Connection B — Client's Supabase project  (Supabase JS client)
+  Used for: all CMS content — pages, posts, media, settings, form submissions
+  Auth: anon key (RLS enforced) or service role key (backend only, never returned to browser)
+  NOT used for: portal auth, session management, or anything the agency-hub owns
 ```
 
 When writing any feature, be explicit about which connection it uses.
 
 ---
 
-## Tenant Context
+## Auth Flow (current — no connection_token)
 
-Every authenticated request carries a `tenant_id` (= `client_id` from agency-hub), embedded in the portal JWT as a claim.
+The connection_token / `/connect` page flow has been **replaced**. The current flow is:
 
-The portal JWT contains the tenant's Supabase config (URL + anon key) so the frontend Supabase client can be initialized with the correct project credentials for this tenant.
-
-**Frontend Supabase client initialization:**
-```typescript
-// src/contexts/supabase-context.tsx
-// Initialized once on login using credentials from the JWT:
-const supabase = createClient(tenantSupabaseUrl, tenantSupabaseAnonKey)
 ```
+1. Agency creates client + project in agency-hub
+2. Agency saves Supabase credentials → triggers auto-push to portal in background
+   OR agency clicks "Push to Portal" button explicitly
+3. Portal backend (POST /api/admin/register-client from agency-hub):
+   a. UPSERTs tenant row in portal DB
+   b. Validates Supabase credentials
+   c. Runs DB migrations on client's Supabase
+   d. Creates default media storage bucket
+   e. Encrypts + stores project credentials in tenant_projects
+   f. Sends magic-link invite email to client (via Supabase Auth)
+4. Client receives email → clicks magic link → Supabase redirects to /auth/callback
+5. AuthCallbackPage extracts Supabase access_token → POST /api/auth/exchange
+6. Portal backend verifies Supabase token, looks up tenant by email, issues portal JWT
+7. JWT set in HTTP-only cookie → redirect to /welcome
+8. Portal calls back to agency-hub: POST /api/clients/{id}/portal-onboarded (bearer PORTAL_ADMIN_SECRET)
+9. Client navigates to /dashboard → full CMS access
+```
+
+**Returning logins:** magic link (POST /api/auth/magic-link → Supabase magic link) OR password (POST /api/auth/login). Both result in a portal JWT after exchange or direct credential check.
 
 ---
 
-## DB Schema
+## Portal JWT Claims (lean — no Supabase creds embedded)
 
-### Portal's Own Supabase (tenant registry + sessions — NOT CMS)
-
-```sql
--- 001_create_tenants.sql
-CREATE TABLE tenants (
-    id                              UUID PRIMARY KEY,  -- same as client_id from agency-hub
-    supabase_url_encrypted          TEXT NOT NULL,
-    supabase_anon_encrypted         TEXT NOT NULL,
-    supabase_service_role_encrypted TEXT NOT NULL,
-    site_url                        TEXT,              -- client's live site URL (for ISR)
-    onboarded_at                    TIMESTAMPTZ,
-    created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 002_create_email_confirmations.sql
-CREATE TABLE email_confirmations (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    email       TEXT NOT NULL,
-    token_hash  TEXT NOT NULL UNIQUE,
-    expires_at  TIMESTAMPTZ NOT NULL,
-    used_at     TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX ON email_confirmations(token_hash);
-CREATE INDEX ON email_confirmations(tenant_id);
-
--- 003_create_tenant_users.sql
-CREATE TABLE tenant_users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    email       TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(tenant_id, email)
-);
+```go
+type PortalClaims struct {
+    UserID   string `json:"user_id"`
+    TenantID string `json:"tenant_id"`  // = client_id from agency-hub
+    Email    string `json:"email"`
+    jwt.RegisteredClaims
+}
 ```
 
-### Client's Supabase (CMS — read/written by portal frontend + client-site)
+Supabase credentials are **NOT** in the JWT. They are fetched at runtime via `GET /api/projects` (decrypted server-side from `tenant_projects` table).
+
+---
+
+## Multi-Project Architecture
+
+A client can have more than one project (e.g., main site + separate landing page). The `SupabaseProvider` handles this:
+
+```typescript
+// src/contexts/supabase-context.tsx
+// Fetches all projects for the authenticated tenant on mount.
+// Exposes: supabase (client for active project), activeProject, projects, setActiveProjectId
+const { data } = useQuery({ queryKey: ['projects'], queryFn: () => api.get('/api/projects') })
+```
+
+- `GET /api/projects` returns all `tenant_projects` rows for the tenant (decrypted `supabase_url` + `supabase_anon_key` only — service role never sent to browser)
+- `setActiveProjectId` switches the active Supabase client and clears all cached CMS queries
+- All CMS hooks call `useTenantSupabase()` — never initialise a Supabase client directly
+- If no projects exist yet: `SupabaseProvider` shows a "no project set up" screen and polls every 10s
+- `/welcome` route uses `AuthOnlyRoute` (not `ProtectedRoute`) so it works before any project is registered
+
+---
+
+## Portal DB Schema
 
 ```sql
--- Standard tables present on every client site:
-site_settings(id, key, value, updated_at)
-pages(id, slug, title, sections JSONB, seo_title, seo_description, is_published, updated_at)
-posts(id, slug, title, content, excerpt, cover_image_url, author_name,
-      is_published, published_at, created_at, updated_at)
-nav_items(id, label, url, order, is_external)
-form_submissions(id, form_name, data JSONB, is_read, submitted_at)
-media(id, filename, url, mime_type, size_bytes, uploaded_at)
+-- Tenant identity (one row per client)
+tenants(
+  id UUID PK,           -- = client_id from agency-hub
+  onboarded_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ
+)
+
+-- Per-project credentials (one row per agency project pushed to portal)
+tenant_projects(
+  id UUID PK,
+  tenant_id → tenants,
+  agency_project_id TEXT,     -- project ID from agency-hub
+  name TEXT,
+  supabase_url_encrypted TEXT,
+  supabase_anon_encrypted TEXT,
+  supabase_service_role_encrypted TEXT,
+  supabase_db_url_encrypted TEXT,
+  site_url TEXT,
+  created_at TIMESTAMPTZ
+)
+
+-- Email → tenant mapping for future logins
+tenant_users(
+  id UUID PK,
+  tenant_id → tenants,
+  email TEXT,
+  created_at TIMESTAMPTZ,
+  UNIQUE(tenant_id, email)
+)
+
+-- Email confirmation tokens (for invite/reset flows)
+email_confirmations(
+  id UUID PK,
+  tenant_id → tenants,
+  project_id UUID,       -- which tenant_project this is for
+  email TEXT,
+  token_hash TEXT UNIQUE,
+  expires_at TIMESTAMPTZ,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ
+)
 ```
 
 ---
 
 ## Credential Encryption
 
-Client Supabase credentials are stored encrypted in the portal DB.
-
-- Algorithm: AES-256-GCM
+Client Supabase credentials are stored AES-256-GCM encrypted in the portal DB.
 - Key: derived from `JWT_SECRET` via HKDF-SHA256 to 32 bytes
-- `EncryptString(plaintext, key) (ciphertext string, err error)` — returns base64-encoded
-- `DecryptString(ciphertext, key) (plaintext string, err error)`
-- File: `internal/utils/crypto.go`
+- Encrypt/decrypt: `internal/utils/crypto.go` — `EncryptString` / `DecryptString`
+- Never log credentials. Never return service role key in any API response.
 
 ---
 
-## Onboarding Flow
-
-Three stages. The most complex flow in the app.
+## Backend Package Map
 
 ```
-Stage 1: /connect
-  Client enters: connection_token + email
-  Portal backend:
-    1. Calls GET /validate-management-token on agency-hub (verify portal is legit)
-    2. Calls POST /validate-connection-token on agency-hub with the entered token
-    3. If valid: stores email confirmation in portal DB (does NOT create Supabase user yet)
-    4. Sends confirmation email via Resend
-  Rate limit: 5 req/min per IP (brute-force protection)
-
-Stage 2: /confirm?token=...
-  Client clicks email link
-  Portal backend:
-    1. Verifies the email confirmation token (hashed, stored in portal DB)
-    2. Creates user in client's Supabase Auth via service role key (fetched from tenant record)
-    3. Marks onboarding complete in portal tenant registry
-    4. Creates tenant_users record (email → tenant_id mapping for future logins)
-    5. Issues portal JWT (contains: user_id, tenant_id, supabase_url, supabase_anon_key)
-  Frontend: redirect to /dashboard
-
-Stage 3: /dashboard (first time)
-  Client lands with full session
-  Supabase context initialized with their project credentials from JWT
-  Content loading begins
-```
-
-**Register Tenant endpoint (called by agency-hub, not clients):**
-```go
-// POST /api/admin/register-client
-// Auth: Authorization: Bearer <AGENCY_MANAGEMENT_TOKEN> + X-Client-ID
-type RegisterClientRequest struct {
-    ClientID                    string `json:"client_id"                     validate:"required,uuid"`
-    ClientSupabaseURL           string `json:"client_supabase_url"           validate:"required,url"`
-    ClientSupabaseAnonKey       string `json:"client_supabase_anon_key"      validate:"required"`
-    ClientSupabaseServiceRoleKey string `json:"client_supabase_service_role_key" validate:"required"`
-    SiteURL                     string `json:"site_url"                      validate:"required,url"`
-}
-// Encrypts credentials → UPSERTs into tenants table → returns 201 { "registered": true }
-```
-
-**Connect endpoint error messages:**
-```go
-// From agency-hub validate-connection-token response:
-"expired"  → "Your access code has expired. Ask your website team for a new one."
-"used"     → "This access code has already been used. Contact your website team."
-"invalid"  → "Invalid access code. Check for typos and try again."
-// Not registered in portal:
-           → "This client is not set up in the portal yet. Contact your website team."
+internal/
+├── onboarding/    RegisterClient (from agency-hub), SendInvite, ResendInvite, Confirm, DeregisterClient
+├── auth/          Login (password), MagicLink, LoginVerify, Exchange, Refresh, Logout, Profile,
+│                  SetPassword, ResetPasswordRequest/Verify/Confirm, CSRF
+├── portalproject/ GET /api/projects → returns decrypted project list for SupabaseProvider
+├── tenant/        ResolveTenant middleware — decrypts creds from DB into request context
+├── claude/        Rate limit, budget check, Anthropic call, usage recording
+├── revalidate/    POST /api/revalidate → fires ISR on client's live site (fire-and-forget)
+├── media/         Signed URL generation for Supabase Storage
+├── startup/       ValidateManagementToken on boot (os.Exit(1) if fails)
+├── mailer/        Pluggable: Resend or Brevo (set via MAILER_PROVIDER env)
+├── middleware/     JWT auth, CSRF, rate limit, CORS, security headers, logger
+├── config/        LoadConfig() — all env vars
+├── database/      pgxpool connection + MigrateClientDB (runs migrations on client Supabase)
+└── utils/         crypto.go, errors.go, response.go, supabase.go
 ```
 
 ---
 
-## Portal Auth — JWT Claims
+## Admin Endpoints (machine-to-machine, no JWT/CSRF)
 
-```go
-type PortalClaims struct {
-    UserID                string `json:"user_id"`
-    TenantID              string `json:"tenant_id"`          // client_id from agency-hub
-    Email                 string `json:"email"`
-    ClientSupabaseURL     string `json:"supabase_url"`
-    ClientSupabaseAnonKey string `json:"supabase_anon_key"`  // anon key — safe to embed
-    jwt.RegisteredClaims
-}
+Called by agency-hub backend only. All authenticated by `Authorization: Bearer <PORTAL_ADMIN_SECRET>`.
+
 ```
-
-**Magic Link Login flow:**
-1. `POST /api/auth/magic-link` — portal backend calls Supabase Auth magiclink endpoint
-2. User clicks link → Supabase redirects to `/auth/callback?access_token=...`
-3. Frontend sends token to `POST /api/auth/exchange`
-4. Portal backend verifies Supabase token, looks up tenant by email from `tenant_users`, issues portal JWT
-5. Cookies set, redirect to `/dashboard`
-
-Never store service role key in JWT. Never log anon key.
-
----
-
-## Claude Content Assistant
-
-**Rate limits (enforced server-side before every call):**
-- 5 req/min per `tenant_id` — Redis key: `claude_rl:{tenant_id}:minute`
-- 20 req/hour per `tenant_id` — Redis key: `claude_rl:{tenant_id}:hour`
-- Monthly token budget checked via agency-hub API (`GET /api/claude/budget/{client_id}`)
-
-**Usage recording:** Call `POST /api/claude/usage` on agency-hub (management token auth) after every successful Claude call. Fire-and-forget — never fail the request if this fails.
-
-**Claude response format — always a JSON array:**
-```typescript
-interface FieldChange {
-  field:    string  // key within the section JSONB
-  current:  string  // existing value
-  proposed: string  // Claude's suggestion
-  notes:    string  // one-sentence explanation
-}
-```
-
-**Rules:**
-- Never let Claude write directly. Apply is always a separate client action.
-- After Apply → write changed fields to client's Supabase → call `POST /api/revalidate` on portal backend → portal triggers client-site ISR.
-- If Claude returns invalid JSON → return 500 "temporarily unavailable" (not a raw parse error).
-
-**429 error messages:**
-```
-minute limit  → "You're making requests too quickly. Please wait a moment."
-hour limit    → "Hourly limit reached. The assistant will be available again soon."
-budget        → "Your monthly content assistant limit has been reached. Your website team will be in touch."
+POST /api/admin/register-client    → RegisterClientRequest — upsert tenant + project creds + send invite
+POST /api/admin/send-invite        → {client_id, email} — send/resend magic link invite
+POST /api/admin/resend-invite      → {client_id, email} — explicit resend
+DELETE /api/admin/deregister-client/{client_id} → remove tenant from portal (client deleted in agency-hub)
 ```
 
 ---
 
-## ISR Revalidation — After Every Content Update
+## Frontend Route Map
 
-After any confirmed content write to the client's Supabase, the portal backend triggers ISR on the client-site:
+| Path | Component | Guard |
+|------|-----------|-------|
+| `/login` | LoginPage | GuestRoute |
+| `/auth/callback` | AuthCallbackPage | none (Supabase redirects here) |
+| `/link-error` | LinkErrorPage | none (public error page) |
+| `/reset-password` | ResetPasswordPage | none |
+| `/welcome` | WelcomePage | AuthOnlyRoute (auth but no project required) |
+| `/dashboard` | DashboardPage | ProtectedRoute (requires project) |
+| `/pages` | PagesListPage | ProtectedRoute |
+| `/pages/:slug` | PageEditorPage | ProtectedRoute |
+| `/blog` | BlogListPage | ProtectedRoute |
+| `/blog/new` | NewPostPage | ProtectedRoute |
+| `/blog/:id/edit` | EditPostPage | ProtectedRoute |
+| `/media` | MediaPage | ProtectedRoute |
+| `/forms` | FormsPage | ProtectedRoute |
+| `/settings` | SettingsPage | ProtectedRoute |
+| `/assistant` | AssistantPage | ProtectedRoute |
 
-```
-POST https://[client-site-url]/api/revalidate
-Headers:
-  X-Revalidate-Secret: [REVALIDATE_SECRET from tenant config]
-  X-Client-ID: [tenant_id]
-Body: { "paths": ["/", "/blog/slug"] }
-```
-
-- Handled by `internal/revalidate/service.go`
-- Non-blocking: fire-and-forget with error logging
-- Frontend never calls this directly — always triggered server-side
-- `site_url` stored in portal's tenant record (set during register-client)
-
----
-
-## Backend Feature Structure
-
-```
-internal/<feature>/{model,repository,service,handler,routes}.go
-```
-
-Feature packages:
-- `internal/startup/` — `ValidateManagementToken()` — called in main.go before serving. `os.Exit(1)` if invalid.
-- `internal/onboarding/` — token validation, Supabase Auth user creation, email confirmation
-- `internal/auth/` — magic link, token exchange, JWT issue/refresh/logout
-- `internal/tenant/` — resolve tenant from JWT claim, decrypt and provide Supabase config
-- `internal/claude/` — rate limit, budget check, prompt build, API call, usage recording
-- `internal/revalidate/` — trigger client-site ISR after content mutations
-- `internal/config/`, `internal/database/`, `internal/middleware/`, `internal/utils/`
-
-**Startup validation (runs before HTTP server):**
-```go
-// Retry 3 times with 2s backoff (Railway cold start protection)
-if err := startup.ValidateManagementToken(cfg, httpClient); err != nil {
-    slog.Error("startup validation failed", "error", err)
-    os.Exit(1)
-}
-```
+**Route guards:**
+- `GuestRoute` — redirects to `/dashboard` if already authenticated
+- `AuthOnlyRoute` — requires valid portal JWT; does NOT wrap with `SupabaseProvider` (use for pages that work before a project is set up)
+- `ProtectedRoute` — requires portal JWT + wraps with `SupabaseProvider` (all CMS pages)
 
 ---
 
@@ -306,28 +246,33 @@ if err := startup.ValidateManagementToken(cfg, httpClient); err != nil {
 ```
 src/
 ├── components/
-│   ├── layout/         PortalLayout, PortalSidebar, PortalHeader
-│   ├── guards/         ProtectedRoute, GuestRoute
-│   └── shared/         SaveIndicator, EmptyState, ConfirmDialog
+│   ├── layout/         portal-layout.tsx, portal-sidebar.tsx, portal-header.tsx, onboarding-layout.tsx
+│   ├── guards/         AuthOnlyRoute.tsx, GuestRoute.tsx, ProtectedRoute.tsx
+│   ├── shared/         save-indicator.tsx
+│   └── ui/             agency-badge.tsx, hard-shadow-card.tsx, status-pill.tsx
 ├── contexts/
-│   ├── auth-context.tsx
-│   └── supabase-context.tsx   ← tenant Supabase client lives here
+│   ├── auth-context.tsx         → portal JWT, login/logout, useAuth()
+│   └── supabase-context.tsx     → Supabase client per project, useTenantSupabase(), useProjectContext()
 ├── features/
-│   ├── onboarding/     ConnectPage, ConnectForm, CheckEmailScreen
-│   ├── dashboard/      DashboardPage, QuickActions, RecentEdits
-│   ├── pages/          PagesListPage, PageEditorPage, SectionEditor + editors
-│   ├── blog/           BlogListPage, NewPostPage, EditPostPage, PostEditor (Tiptap)
-│   ├── media/          MediaPage, MediaGrid, MediaUploader, MediaPickerModal
-│   ├── forms/          FormsPage, SubmissionsTable, SubmissionDetail
-│   ├── settings/       SettingsPage, GeneralSettings, SeoSettings, NavEditor
-│   └── assistant/      AssistantPanel, InstructionForm, DiffPreview, ApplyBar
+│   ├── onboarding/     welcome-page.tsx, link-error-page.tsx
+│   ├── auth/           login-page.tsx, auth-callback-page.tsx, reset-password-page.tsx
+│   ├── dashboard/      dashboard-page.tsx + quick-actions, recent-edits, form-submissions-preview
+│   ├── pages/          pages-list-page.tsx, page-editor-page.tsx + section editors (hero, features, about, testimonials, cta)
+│   ├── blog/           blog-list-page.tsx, new-post-page.tsx, edit-post-page.tsx + tiptap-editor, post-meta-sidebar
+│   ├── media/          media-page.tsx + file-browser, storage-item, media-picker-modal
+│   ├── forms/          forms-page.tsx + submissions-table, submission-detail
+│   ├── settings/       settings-page.tsx + general-settings, seo-settings, social-settings, nav-editor
+│   └── assistant/      assistant-page.tsx + instruction-form, diff-preview, apply-bar, rate-limit-banner
 ├── lib/
-│   ├── axios.ts        Portal backend calls
-│   └── utils.ts        cn(), formatDate(), formatBytes()
-└── types/index.ts      Page, Post, NavItem, FormSubmission, FieldChange, etc.
+│   ├── axios.ts        → portal backend calls (CSRF attached, 401 refresh, 429 toast)
+│   └── utils.ts        → cn(), formatDate(), formatBytes(), slugify()
+└── types/index.ts      → Page, Post, NavItem, FormSubmission, FieldChange, ProjectEntry, etc.
 ```
 
-**Supabase query pattern:**
+---
+
+## Supabase Query Pattern (CMS reads/writes)
+
 ```typescript
 export function usePages() {
   const supabase = useTenantSupabase()
@@ -342,226 +287,121 @@ export function usePages() {
 }
 ```
 
-**Shared components:**
-- `SaveIndicator` — states: idle | saving | saved | error. Auto-clears "saved" after 2s.
-- `EmptyState({ icon, title, description, action })`
-- `ConfirmDialog({ title, description, onConfirm, dangerous? })` — wraps shadcn AlertDialog
+Never initialise a Supabase client outside of `supabase-context.tsx`. Never call `useTenantSupabase()` outside `ProtectedRoute` — it throws.
 
 ---
 
-## Route Map
+## Client CMS Supabase Schema
 
-| Path | Component | Guard |
-|------|-----------|-------|
-| `/connect` | ConnectPage | GuestRoute |
-| `/auth/callback` | AuthCallbackPage | GuestRoute |
-| `/dashboard` | DashboardPage | ProtectedRoute |
-| `/pages` | PagesListPage | ProtectedRoute |
-| `/pages/:slug` | PageEditorPage | ProtectedRoute |
-| `/blog` | BlogListPage | ProtectedRoute |
-| `/blog/new` | NewPostPage | ProtectedRoute |
-| `/blog/:id/edit` | EditPostPage | ProtectedRoute |
-| `/media` | MediaPage | ProtectedRoute |
-| `/forms` | FormsPage | ProtectedRoute |
-| `/settings` | SettingsPage | ProtectedRoute |
-| `/assistant` | AssistantPage | ProtectedRoute |
+Standard tables present on every client's Supabase project (migrated on portal registration):
+
+```sql
+site_settings(id, key TEXT, value TEXT, updated_at)
+pages(id, slug TEXT UNIQUE, title TEXT, sections JSONB, seo_title TEXT, seo_description TEXT, is_published BOOL, updated_at)
+posts(id, slug TEXT UNIQUE, title TEXT, content TEXT, excerpt TEXT, cover_image_url TEXT,
+      author_name TEXT, is_published BOOL, published_at TIMESTAMPTZ, created_at, updated_at)
+nav_items(id, label TEXT, url TEXT, order INT, is_external BOOL)
+form_submissions(id, form_name TEXT, data JSONB, is_read BOOL, submitted_at TIMESTAMPTZ)
+media(id, filename TEXT, url TEXT, mime_type TEXT, size_bytes INT, uploaded_at TIMESTAMPTZ)
+```
 
 ---
 
-## Page & Section Editors
+## Claude Content Assistant
 
-Pages JSONB sections are edited per-section. Section type → editor component:
+**Rate limits (enforced server-side):**
+- 5 req/min per `tenant_id` (Redis sliding window)
+- 20 req/hour per `tenant_id` (Redis sliding window)
+- Monthly token budget checked via agency-hub API
 
+**Usage recording:** `POST /api/claude/usage` on agency-hub after every successful call. Fire-and-forget — never fail the client request if this fails.
+
+**Response format (always a JSON array):**
 ```typescript
-const sectionEditors = {
-  hero:         HeroEditor,        // headline, subheadline, cta_label, cta_url
-  features:     FeaturesEditor,    // repeatable: icon, title, description
-  about:        AboutEditor,       // body textarea + optional image
-  testimonials: TestimonialsEditor, // repeatable: quote, author, role, avatar
-  cta:          CTAEditor,         // headline, subheadline, button label, button url
+interface FieldChange {
+  field:    string  // key within the section JSONB
+  current:  string  // existing value
+  proposed: string  // Claude's suggestion
+  notes:    string  // one-sentence explanation
 }
 ```
 
-Each section editor:
-- Shows current values in editable fields
-- "Save section" button → `UPDATE pages SET sections = jsonb_set(...) WHERE slug = $1`
-- After save → call `POST /api/revalidate` via portal backend with path `/`
-- Shows `SaveIndicator`
+**Rules:**
+- Never let Claude write directly. Apply is always a separate explicit client action.
+- After Apply → write to client's Supabase → call `POST /api/revalidate` → portal triggers ISR on live site.
+- If Claude returns invalid JSON → return 500 "temporarily unavailable".
 
----
-
-## Blog Editor (Tiptap)
-
-```typescript
-const editor = useEditor({
-  extensions: [
-    StarterKit.configure({ heading: { levels: [2, 3] } }),
-    Link.configure({ openOnClick: false }),
-    Image,
-    Placeholder.configure({ placeholder: 'Start writing...' }),
-  ],
-  content: post?.content ?? '',
-  onUpdate: ({ editor }) => setContent(editor.getHTML()),
-})
+**429 error copy:**
+```
+minute limit → "You're making requests too quickly. Please wait a moment."
+hour limit   → "Hourly limit reached. The assistant will be available again soon."
+budget       → "Your monthly content assistant limit has been reached. Your website team will be in touch."
 ```
 
-- Auto-save: debounce 2s after typing stops
-- Slug: auto-generated from title via `slugify()`, editable, unique check on blur
-- Draft/Publish toggle: `published_at` set on first publish, NOT cleared on unpublish
-- Cover image via `MediaPickerModal`
-
 ---
 
-## Media Library
+## ISR Revalidation
 
-- Upload to Supabase Storage `media` bucket directly from browser (anon key + Storage RLS)
-- Accepts: jpeg, png, webp, gif, svg · Max: 5MB
-- On upload: validate → `supabase.storage.from('media').upload()` → get public URL → insert `media` table row
-- `MediaPickerModal` — reusable modal, `onSelect(url)` callback. Used by all content editors.
+After any confirmed CMS write, the portal backend triggers ISR on the client's live site (fire-and-forget):
+
+```
+POST https://[site_url]/api/revalidate
+Headers: X-Revalidate-Secret: [REVALIDATE_SECRET], X-Client-ID: [tenant_id]
+Body: { "paths": ["/", "/blog/slug"] }
+```
+
+Handled by `internal/revalidate/service.go`. Frontend never calls this — always triggered server-side after a confirmed mutation.
 
 ---
 
 ## Security Rules
 
 - CSRF token required on all state-changing routes
-- Rate limiting: 5/min on onboarding endpoints, 30/min on authenticated routes, separate Claude limits
-- Management token validated on startup — `os.Exit(1)` if invalid
-- Service role key: server-side only, never returned in any API response, never in JWT
-- Client Supabase anon key included in JWT (HTTP-only cookie — browser cannot read raw cookie)
-- Never log tenant credentials
-- Tenant isolation: JWT tenant_id claim is the only source of truth for which Supabase project to access
+- Rate limiting: auth routes 5/min per IP, Claude limits per tenant
+- `PORTAL_ADMIN_SECRET` used for all machine-to-machine calls from agency-hub
+- Service role key: backend only, never in any API response, never in JWT
+- Never log Supabase credentials
+- Tenant isolation: JWT `tenant_id` is the only source of truth for which `tenant_projects` rows to access
+- Startup: `ValidateManagementToken` checks agency-hub is reachable before serving (`os.Exit(1)` if not)
 
 ---
 
 ## Environment Variables
 
 ```env
-# Portal's own Supabase (tenant registry)
-SUPABASE_DB_URL=postgresql://...
+# Portal DB (tenant registry only)
+SUPABASE_DB_URL=postgresql://postgres:password@db.<ref>.supabase.co:5432/postgres
 DB_SSLMODE=require
 
-# Agency-hub API
+# Agency-hub server-to-server
 AGENCY_API_URL=https://agency-hub.yourdomain.com
-AGENCY_CLIENT_ID=<uuid>
-AGENCY_MANAGEMENT_TOKEN=<plaintext management token>
+PORTAL_ADMIN_SECRET=<shared secret — also set in agency-hub's PORTAL_ADMIN_SECRET>
 
 # Auth
-JWT_SECRET=<random 64+ chars>
+JWT_SECRET=<random 64+ chars — also used as encryption key base>
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=168h
 
-# Redis (Claude rate limiting)
+# Redis (rate limiting)
 UPSTASH_REDIS_URL=
-UPSTASH_REDIS_TOKEN=
 
 # Claude
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_DEFAULT_MODEL=claude-haiku-4-5-20251001
 CLAUDE_DEFAULT_MONTHLY_TOKEN_BUDGET=150000
 
-# Email
-RESEND_API_KEY=
-RESEND_FROM=noreply@youragency.com
+# Email (choose one provider)
+MAILER_PROVIDER=resend            # or "brevo"
+EMAIL_FROM=noreply@youragency.com
+RESEND_API_KEY=                   # if MAILER_PROVIDER=resend
+BREVO_SMTP_USER=                  # if MAILER_PROVIDER=brevo
+BREVO_SMTP_KEY=                   # if MAILER_PROVIDER=brevo
 
 # App
 ENVIRONMENT=development
+PUBLIC_URL=http://localhost:8081   # used in email links
 FRONTEND_URL=http://localhost:5174
 PORT=8081
-```
-
----
-
-## Design → Implementation Workflow (Variants)
-
-Variants is the visual source of truth for this project.
-
-**Rule 1:** Preserve all layout, spacing, and visual decisions from the Variants export. Only adapt: non-shadcn elements → shadcn equivalents, untyped props → TypeScript interfaces, hardcoded colors → Tailwind v4 utilities, hardcoded content → data-driven props.
-
-**Rule 2:** First Variants-derived card → all cards follow. First editor UI → all editors follow.
-
-**Rule 3:** Content editors need three states designed: empty, populated, edit mode.
-
-**Variants paste prompt:**
-```
-Here is a Variants export for [component name] in the client-portal.
-
-Adapt it to portal conventions:
-Stack: React 19 + TypeScript (strict) + Tailwind v4 + shadcn/ui
-Target file: src/features/[feature]/components/[ComponentName].tsx
-
-Portal rules:
-- All Supabase reads use useTenantSupabase() context hook
-- All CMS mutations call invalidateQueries after success
-- If this is a form, use React Hook Form + Zod
-- If this involves saving content, show SaveIndicator (not just a toast)
-- Preserve the layout and spacing exactly
-
-[paste Variants code here]
-```
-
----
-
-## Build Order (Milestones)
-
-```
-M1: Backend Foundation
-  - Go project setup + dependencies
-  - Portal's own Supabase (run migrations)
-  - Startup management token validation
-  - Config, DB, middleware stack (auth, CSRF, rate limit, logger)
-  - Onboarding flow (connect + confirm)
-  - Portal auth (magic link, exchange, JWT with tenant claims)
-  - Tenant registry service (encrypt/decrypt credentials)
-  - ISR revalidation service
-
-M2: Claude Content Assistant (backend)
-  - Rate limiter (Redis sliding window)
-  - Usage repository (calls agency-hub API)
-  - Prompt builder (fetches section from client Supabase)
-  - Claude service + handler (POST /assistant/generate)
-
-M3: Frontend Shell + Onboarding UI
-  - React + Vite + TypeScript setup
-  - axios client + Supabase context (useTenantSupabase)
-  - Auth context + routes (ProtectedRoute, GuestRoute)
-  - Design: Connect page (Variants)
-  - Build: ConnectPage, ConnectForm, CheckEmailScreen
-  - Design: Portal shell — sidebar + header (Variants)
-  - Build: PortalLayout, PortalSidebar, PortalHeader
-
-M4: Page & Section Editors
-  - Design: Pages list + page editor layout (Variants)
-  - Build: PagesListPage + PagesList
-  - Build: PageEditorPage, SectionEditor, HeroEditor + SaveIndicator
-  - Build: FeaturesEditor, AboutEditor, TestimonialsEditor, CTAEditor
-
-M5: Blog Editor
-  - Design: Blog list + post editor (Variants)
-  - Build: BlogListPage, PostsTable
-  - Build: PostEditor (Tiptap), PostMetaForm, PostStatusToggle
-
-M6: Media Library
-  - Design: Media grid (Variants)
-  - Build: MediaPage, MediaGrid, MediaUploader, MediaItem
-  - Build: MediaPickerModal (reusable across all editors)
-
-M7: Claude Assistant UI
-  - Design: Assistant panel + diff preview (Variants)
-  - Build: use-assistant.ts hook + 429 error mapping
-  - Build: InstructionForm, DiffPreview, ApplyBar, RateLimitBanner, AssistantPanel
-
-M8: Secondary Features
-  - Build: FormsPage, SubmissionsTable, SubmissionDetail
-  - Build: SettingsPage (General, SEO, Social tabs), NavEditor
-  - Build: DashboardPage, QuickActions, RecentEdits, FormSubmissionsPreview
-
-M9: QA & Deploy
-  - End-to-end: full onboarding flow
-  - End-to-end: content edit → ISR → live on client site
-  - End-to-end: Claude assistant → apply → live
-  - Rate limit verification (all three limits)
-  - Security review (management token, service role key, CSRF, tenant isolation)
-  - Deploy: backend to Railway, frontend to Vercel
 ```
 
 ---
@@ -569,34 +409,16 @@ M9: QA & Deploy
 ## Do Not
 
 **Backend:**
-- Do not write CMS content directly from the portal backend — the frontend Supabase client handles it
-- Do not expose the service role key in any API response
-- Do not call the Claude API without checking rate limits + token budget first
-- Do not trigger ISR revalidation from the frontend — always via backend after confirmed mutation
+- Do not write CMS content from the portal backend — the frontend Supabase client handles it
+- Do not expose service role key in any API response
+- Do not call the Claude API without checking rate limits + budget first
+- Do not trigger ISR from the frontend — always via the portal backend after a confirmed mutation
+- Do not store Supabase credentials unencrypted
 
 **Frontend:**
-- Do not initialize the Supabase client outside of `supabase-context.tsx`
-- Do not call Claude's generate endpoint without showing a preview first
-- Do not let the user apply changes without an explicit confirm step
-- Do not store the Claude API key anywhere in the frontend
-- Do not use `useTenantSupabase()` before auth is established (it throws — do not silence it)
-
----
-
-## Linear Project Reference
-
-```
-Team:       client-portal
-Identifier: CP  (issues: CP-1, CP-2, ...)
-Labels:     backend · frontend · design · infra · security · bug · chore
-
-Cycles:
-  Cycle 1: M1 — Backend foundation
-  Cycle 2: M2 — Claude backend
-  Cycle 3: M3 — Frontend shell + onboarding
-  Cycle 4: M4 + M5 — Content editors
-  Cycle 5: M6 + M7 — Media + assistant
-  Cycle 6: M8 + M9 — Secondary + QA
-```
-
-See `LINEAR-SETUP.md` in this folder for the full issue list (CP-1 through CP-41).
+- Do not initialise the Supabase client outside of `supabase-context.tsx`
+- Do not call `useTenantSupabase()` outside `ProtectedRoute` — it throws
+- Do not call Claude generate without showing a preview diff first
+- Do not let the user apply Claude changes without an explicit confirm step
+- Do not store the Claude API key in the frontend
+- Do not use the old `/connect` or connection-token flow — that path no longer exists
