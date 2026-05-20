@@ -13,15 +13,15 @@ type Reason = 'used' | 'expired' | 'invalid' | 'error'
 const MESSAGES: Record<Reason, { heading: string; body: string; cta: string; ctaPath: string }> = {
   used: {
     heading: 'Account already verified.',
-    body:    'Your email has already been confirmed and your account is active. Sign in with your password to access your dashboard.',
-    cta:     'Sign in →',
+    body:    'Your email has already been confirmed and your account is active. Sign in on the login page — use your password, or request a sign-in link if you haven\'t set one yet.',
+    cta:     'Go to sign in',
     ctaPath: '/login',
   },
   expired: {
     heading: 'Link expired.',
-    body:    'This link is no longer valid. Confirmation links expire after 72 hours.',
-    cta:     'Request a new link',
-    ctaPath: '/connect',
+    body:    'This link is no longer valid. Confirmation links expire after 72 hours. Ask your website team to resend the invite, or sign in with a magic link.',
+    cta:     'Go to sign in',
+    ctaPath: '/login',
   },
   invalid: {
     heading: 'Invalid link.',
@@ -69,14 +69,15 @@ export function LinkErrorPage() {
             </p>
             {reason === 'used' && (
               <ul className="flex flex-col gap-1.5">
-                <li className="font-mono text-sm text-ink opacity-70">→ Sign in with your password on the login page</li>
-                <li className="font-mono text-sm text-ink opacity-70">→ Forgot your password? Use "Send a sign-in link" on the login page</li>
+                <li className="font-mono text-sm text-ink opacity-70">→ Use "Send me a sign-in link" on the sign-in page — no password needed</li>
+                <li className="font-mono text-sm text-ink opacity-70">→ Once signed in, go to Settings → Security to set your password</li>
+                <li className="font-mono text-sm text-ink opacity-70">→ Already have a password? Sign in with your email and password as usual</li>
               </ul>
             )}
             {reason === 'expired' && (
               <ul className="flex flex-col gap-1.5">
                 <li className="font-mono text-sm text-ink opacity-70">→ Ask your website team to resend the invite</li>
-                <li className="font-mono text-sm text-ink opacity-70">→ New links are valid for 72 hours</li>
+                <li className="font-mono text-sm text-ink opacity-70">→ Or use "Send a sign-in link" on the login page once your account is set up</li>
               </ul>
             )}
             {(reason === 'invalid' || reason === 'error') && (

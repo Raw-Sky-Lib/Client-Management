@@ -48,6 +48,7 @@ func (r *Repository) GetTenantByEmail(ctx context.Context, email string) (*Tenan
 		FROM tenant_users tu
 		JOIN tenants t ON t.id = tu.tenant_id
 		WHERE tu.email = $1
+		ORDER BY t.created_at DESC
 		LIMIT 1
 	`, email).Scan(&t.TenantID)
 	if err != nil {
@@ -59,16 +60,20 @@ func (r *Repository) GetTenantByEmail(ctx context.Context, email string) (*Tenan
 	return t, nil
 }
 
-// StoreLoginToken clears unused tokens for the same email and stores a fresh one.
+// StoreLoginToken clears unused login tokens for this tenant+email and stores a fresh one.
+// Only login-type tokens are deleted — invite tokens are left untouched so that a client
+// requesting a magic link or password reset while their invite is still pending doesn't
+// lose their original onboarding link.
 func (r *Repository) StoreLoginToken(ctx context.Context, tenantID, email, hash string, expiresAt time.Time) error {
 	if _, err := r.db.Exec(ctx, `
-		DELETE FROM email_confirmations WHERE tenant_id = $1 AND email = $2 AND used_at IS NULL
+		DELETE FROM email_confirmations
+		WHERE tenant_id = $1 AND email = $2 AND token_type = 'login' AND used_at IS NULL
 	`, tenantID, email); err != nil {
 		return err
 	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at, token_type)
+		VALUES ($1, $2, $3, $4, 'login')
 	`, tenantID, email, hash, expiresAt)
 	return err
 }

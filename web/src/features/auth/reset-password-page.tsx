@@ -80,6 +80,8 @@ export function ResetPasswordPage() {
         const status = err.response?.status
         if (status === 401) {
           setFormError('This reset link is invalid or has expired. Request a new one from the sign-in page.')
+        } else if (status === 422) {
+          setFormError('Your portal account isn\'t fully set up yet. Please use the sign-in link from your invitation email instead.')
         } else {
           setFormError((err.response?.data?.error as string) || 'Something went wrong. Please try again.')
         }

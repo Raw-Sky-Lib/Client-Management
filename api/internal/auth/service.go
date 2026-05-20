@@ -23,6 +23,10 @@ var (
 	ErrEmailNotRegistered = errors.New("email not registered")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrInvalidCredentials = errors.New("invalid email or password")
+	// ErrPortalNotReady is returned when a password reset is attempted before the
+	// client's Supabase project credentials have been configured in the portal.
+	// Password auth is Supabase-backed, so it cannot work without a project.
+	ErrPortalNotReady = errors.New("portal not ready")
 )
 
 type Service struct {
@@ -147,7 +151,7 @@ func (s *Service) SetUserPassword(ctx context.Context, tenantID, email, password
 		return fmt.Errorf("lookup project: %w", err)
 	}
 	if proj == nil {
-		return fmt.Errorf("no project found for tenant")
+		return ErrPortalNotReady
 	}
 	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
@@ -242,7 +246,9 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password stri
 		return fmt.Errorf("lookup project: %w", err)
 	}
 	if proj == nil {
-		return ErrInvalidToken
+		// No Supabase project configured yet — password auth is unavailable.
+		// Client should use the magic-link sign-in or wait for the agency to push credentials.
+		return ErrPortalNotReady
 	}
 
 	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
@@ -254,14 +260,65 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password stri
 		return fmt.Errorf("decrypt service role: %w", err)
 	}
 
-	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, rec.Email)
+	// Ensure the Supabase user exists — createSupabaseUser during RegisterClient is
+	// non-fatal, so the user may not have been created if it failed silently.
+	userID, err := s.ensureSupabaseUser(ctx, supabaseURL, serviceRoleKey, rec.Email)
 	if err != nil {
-		return fmt.Errorf("get supabase user: %w", err)
+		return fmt.Errorf("ensure supabase user: %w", err)
 	}
 	if err := s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password); err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
 	return s.repo.MarkLoginTokenUsed(ctx, rec.ID)
+}
+
+// ensureSupabaseUser returns the Supabase user ID for email, creating the user if absent.
+// This guards against the case where createSupabaseUser failed silently during RegisterClient.
+func (s *Service) ensureSupabaseUser(ctx context.Context, supabaseURL, serviceRoleKey, email string) (string, error) {
+	userID, err := s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, email)
+	if err == nil {
+		return userID, nil
+	}
+	// User not found — create with a random password (email_confirm bypasses verification).
+	pw, err := randomHex(32)
+	if err != nil {
+		return "", err
+	}
+	body, _ := json.Marshal(map[string]any{
+		"email":         email,
+		"password":      pw,
+		"email_confirm": true,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		supabaseURL+"/auth/v1/admin/users", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("build create-user request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+serviceRoleKey)
+	req.Header.Set("apikey", serviceRoleKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("supabase create user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 422 = already exists (race condition) — re-fetch.
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return s.getSupabaseUserByEmail(ctx, supabaseURL, serviceRoleKey, email)
+	}
+
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode user: %w", err)
+	}
+	if result.ID == "" {
+		return "", fmt.Errorf("supabase returned empty user id (status %d)", resp.StatusCode)
+	}
+	return result.ID, nil
 }
 
 // IssueTokenPair implements JWTIssuer — called by the onboarding handler after Confirm.

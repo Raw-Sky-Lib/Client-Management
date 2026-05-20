@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,10 +69,10 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 		strings.TrimRight(req.ClientSupabaseURL, "/"), "/rest/v1"), "/")
 
 	if err := utils.ValidateSupabaseCredentials(req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey); err != nil {
-		return fmt.Errorf("invalid supabase credentials: %w", err)
+		return fmt.Errorf("%w: %s", ErrBadSupabaseCredentials, err.Error())
 	}
 	if err := database.MigrateClientDB(req.ClientSupabaseDBURL); err != nil {
-		return fmt.Errorf("client db migration: %w", err)
+		return fmt.Errorf("%w: %s", ErrBadDBURL, err.Error())
 	}
 
 	bucketName := bucketNameFromSiteURL(req.SiteURL)
@@ -109,7 +110,12 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 		return fmt.Errorf("upsert tenant project: %w", err)
 	}
 
-	// 3. Upsert tenant_users so magic-link login works immediately
+	// 3. Evict any orphaned tenant_users rows for the same email (left over from a
+	//    manually-deleted client that was re-created without calling DeregisterClient),
+	//    then upsert the canonical mapping for this tenant.
+	if err := s.repo.EvictEmailFromOtherTenants(ctx, req.ClientID, req.Email); err != nil {
+		return fmt.Errorf("evict orphaned email mappings: %w", err)
+	}
 	if err := s.repo.UpsertTenantUser(ctx, req.ClientID, req.Email); err != nil {
 		return fmt.Errorf("upsert tenant user: %w", err)
 	}
@@ -118,6 +124,22 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	// Non-fatal — client can still log in if this fails.
 	if _, err := s.createSupabaseUser(ctx, req.ClientSupabaseURL, req.ClientSupabaseServiceRoleKey, req.Email); err != nil {
 		_ = err
+	}
+
+	// 5. If the client already confirmed a previous invite, skip sending a new one and
+	//    re-fire the agency-hub notification to reconcile any previously failed callback.
+	//    Otherwise send the invite so the client can access their dashboard.
+	alreadyOnboarded, _ := s.repo.IsTenantOnboarded(ctx, req.ClientID)
+	if alreadyOnboarded {
+		s.notifyAgencyOnboarded(req.ClientID)
+		return nil
+	}
+	var inviteProjectID *string
+	if portalID, lookupErr := s.repo.GetProjectIDByAgencyID(ctx, req.ProjectID); lookupErr == nil {
+		inviteProjectID = &portalID
+	}
+	if err := s.sendInvite(ctx, req.ClientID, req.Email, inviteProjectID); err != nil {
+		return fmt.Errorf("send invite: %w", err)
 	}
 	return nil
 }
@@ -390,25 +412,42 @@ func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceR
 
 
 // notifyAgencyOnboarded calls agency-hub to set portal_onboarded_at on the client record.
-// Fire-and-forget — never fails the confirm flow.
+// Runs in a goroutine — never blocks the confirm flow. Retries up to 3 times with
+// exponential back-off so a momentary agency-hub restart doesn't silently lose the event.
 func (s *Service) notifyAgencyOnboarded(tenantID string) {
 	if s.agencyURL == "" || s.agencyToken == "" {
+		slog.Warn("notifyAgencyOnboarded: agency URL/token not configured — skipping", "tenant_id", tenantID)
 		return
 	}
+	endpoint := strings.TrimRight(s.agencyURL, "/") + "/api/clients/" + tenantID + "/portal-onboarded"
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		endpoint := strings.TrimRight(s.agencyURL, "/") + "/api/clients/" + tenantID + "/portal-onboarded"
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
-		if err != nil {
-			return
+		delays := []time.Duration{0, 5 * time.Second, 15 * time.Second}
+		for attempt, delay := range delays {
+			if delay > 0 {
+				time.Sleep(delay)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+			if err != nil {
+				cancel()
+				slog.Error("notifyAgencyOnboarded: build request failed", "tenant_id", tenantID, "error", err)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+s.agencyToken)
+			resp, err := s.httpClient.Do(req)
+			cancel()
+			if err != nil {
+				slog.Warn("notifyAgencyOnboarded: attempt failed", "tenant_id", tenantID, "attempt", attempt+1, "error", err)
+				continue
+			}
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return
+			}
+			slog.Warn("notifyAgencyOnboarded: non-2xx response",
+				"tenant_id", tenantID, "status", resp.StatusCode, "attempt", attempt+1)
 		}
-		req.Header.Set("Authorization", "Bearer "+s.agencyToken)
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			return
-		}
-		resp.Body.Close()
+		slog.Error("notifyAgencyOnboarded: all attempts exhausted — portal_onboarded_at not synced", "tenant_id", tenantID)
 	}()
 }
 

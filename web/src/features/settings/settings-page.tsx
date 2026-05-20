@@ -3,12 +3,14 @@ import { GeneralSettings } from './components/general-settings'
 import { SeoSettings } from './components/seo-settings'
 import { SocialSettings } from './components/social-settings'
 import { NavEditor } from './components/nav-editor'
+import { SecuritySettings } from './components/security-settings'
 
 const TABS = [
-  { id: 'general', label: 'General',  component: <GeneralSettings /> },
-  { id: 'seo',     label: 'SEO',      component: <SeoSettings /> },
-  { id: 'social',  label: 'Social',   component: <SocialSettings /> },
-  { id: 'nav',     label: 'Nav',      component: <NavEditor /> },
+  { id: 'general',  label: 'General',  component: <GeneralSettings /> },
+  { id: 'seo',      label: 'SEO',      component: <SeoSettings /> },
+  { id: 'social',   label: 'Social',   component: <SocialSettings /> },
+  { id: 'nav',      label: 'Nav',      component: <NavEditor /> },
+  { id: 'security', label: 'Security', component: <SecuritySettings /> },
 ] as const
 
 export function SettingsPage() {

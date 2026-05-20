@@ -1,6 +1,14 @@
 package onboarding
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var (
+	ErrBadSupabaseCredentials = errors.New("invalid supabase credentials")
+	ErrBadDBURL               = errors.New("database migration failed")
+)
 
 // RegisterClientRequest is sent by agency-hub when a project is registered with the portal.
 type RegisterClientRequest struct {

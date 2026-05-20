@@ -100,7 +100,7 @@ func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.svc.SendClientInvite(r.Context(), req.ClientID, req.Email); err != nil {
 		slog.Error("send invite failed", "error", err)
-		utils.RespondError(w, http.StatusInternalServerError, "failed to send invite")
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"sent": true})
@@ -179,7 +179,14 @@ func (h *Handler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.svc.RegisterClient(r.Context(), req); err != nil {
 		slog.Error("register client failed", "error", err)
-		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		switch {
+		case errors.Is(err, ErrBadSupabaseCredentials):
+			utils.RespondError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, ErrBadDBURL):
+			utils.RespondError(w, http.StatusBadRequest, err.Error())
+		default:
+			utils.RespondError(w, http.StatusInternalServerError, "registration failed")
+		}
 		return
 	}
 	utils.RespondJSON(w, http.StatusCreated, map[string]bool{"registered": true})

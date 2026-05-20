@@ -106,17 +106,38 @@ func (r *Repository) TenantExists(ctx context.Context, clientID string) (bool, e
 	return exists, err
 }
 
-// StoreEmailConfirmation stores a confirmation token scoped to a tenant_projects row.
-// projectID is the tenant_projects.id (portal UUID) — nullable for legacy magic-link logins.
+// IsTenantOnboarded returns true when the client has already confirmed their invite
+// (tenants.onboarded_at is set). Used by RegisterClient to skip re-sending invites.
+func (r *Repository) IsTenantOnboarded(ctx context.Context, clientID string) (bool, error) {
+	var onboarded bool
+	err := r.db.QueryRow(ctx,
+		"SELECT onboarded_at IS NOT NULL FROM tenants WHERE id = $1", clientID,
+	).Scan(&onboarded)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return onboarded, nil
+}
+
+// StoreEmailConfirmation stores an invite confirmation token scoped to a tenant_projects row.
+// projectID is the tenant_projects.id (portal UUID) — nullable for pre-project invites.
+//
+// The DELETE sweeps all unused invite tokens for this email across ALL tenants so that
+// orphaned tokens from a manually-deleted-and-recreated client cannot cause a
+// "account already verified" error on the new invite link. Login tokens (magic link,
+// password reset) are left untouched — they use token_type='login'.
 func (r *Repository) StoreEmailConfirmation(ctx context.Context, tenantID, email, hash string, expiresAt time.Time, projectID *string) error {
 	if _, err := r.db.Exec(ctx, `
-		DELETE FROM email_confirmations WHERE tenant_id = $1 AND email = $2 AND used_at IS NULL
-	`, tenantID, email); err != nil {
+		DELETE FROM email_confirmations WHERE email = $1 AND token_type = 'invite' AND used_at IS NULL
+	`, email); err != nil {
 		return err
 	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at, project_id)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO email_confirmations (tenant_id, email, token_hash, expires_at, project_id, token_type)
+		VALUES ($1, $2, $3, $4, $5, 'invite')
 	`, tenantID, email, hash, expiresAt, projectID)
 	return err
 }
@@ -169,6 +190,17 @@ func (r *Repository) UpsertTenantUser(ctx context.Context, tenantID, email strin
 		VALUES ($1, $2)
 		ON CONFLICT (tenant_id, email) DO NOTHING
 	`, tenantID, email)
+	return err
+}
+
+// EvictEmailFromOtherTenants removes tenant_users rows for the given email that belong
+// to any tenant other than tenantID. Called during RegisterClient so that a manually
+// deleted-and-recreated client doesn't leave orphaned rows that would cause GetTenantByEmail
+// to return the wrong (now-dead) tenant, silently breaking password reset and magic link flows.
+func (r *Repository) EvictEmailFromOtherTenants(ctx context.Context, tenantID, email string) error {
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM tenant_users WHERE email = $1 AND tenant_id != $2
+	`, email, tenantID)
 	return err
 }
 

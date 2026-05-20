@@ -18,7 +18,13 @@ const passwordSchema = z.object({
 })
 type PasswordValues = z.infer<typeof passwordSchema>
 
-function PasswordForm({ onReset }: { onReset: () => void }) {
+function PasswordForm({
+  onReset,
+  onMagicLink,
+}: {
+  onReset: () => void
+  onMagicLink: () => void
+}) {
   const [formError, setFormError] = useState<string | null>(null)
   const { refresh } = useAuth()
   const navigate    = useNavigate()
@@ -138,6 +144,15 @@ function PasswordForm({ onReset }: { onReset: () => void }) {
           >
             Forgot password? Reset it →
           </button>
+
+          <button
+            type="button"
+            onClick={onMagicLink}
+            disabled={isSubmitting}
+            className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
+          >
+            Send me a sign-in link instead →
+          </button>
         </div>
 
       </form>
@@ -153,8 +168,8 @@ const emailSchema = z.object({
 type EmailValues = z.infer<typeof emailSchema>
 
 function ResetRequestForm({ onBack }: { onBack: () => void }) {
-  const [sent, setSent]         = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
+  const [sent, setSent]             = useState(false)
+  const [formError, setFormError]   = useState<string | null>(null)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<EmailValues>({
     resolver: zodResolver(emailSchema),
   })
@@ -279,10 +294,139 @@ function ResetRequestForm({ onBack }: { onBack: () => void }) {
   )
 }
 
+// ─── Magic link form ───────────────────────────────────────────────────────────
+
+function MagicLinkForm({ onBack }: { onBack: () => void }) {
+  const [sent, setSent]             = useState(false)
+  const [formError, setFormError]   = useState<string | null>(null)
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<EmailValues>({
+    resolver: zodResolver(emailSchema),
+  })
+
+  async function onSubmit(values: EmailValues) {
+    setFormError(null)
+    try {
+      await api.post('/api/auth/magic-link', { email: values.email })
+      setSent(true)
+    } catch (err) {
+      if (isAxiosError(err)) {
+        const msg = err.response?.data?.error as string
+        if (err.response?.status === 429) {
+          setFormError(msg || 'Please wait a moment before requesting another sign-in link.')
+        } else {
+          setFormError(msg || 'Something went wrong. Please try again.')
+        }
+      } else {
+        setFormError('Something went wrong. Please try again.')
+      }
+    }
+  }
+
+  if (sent) {
+    return (
+      <HardShadowCard>
+        <div className="px-8 pt-7 pb-5 border-b-2 border-ink">
+          <h2 className="font-sans font-extrabold text-[1.75rem] leading-tight tracking-tight text-ink">
+            Check your inbox.
+          </h2>
+          <p className="font-mono text-sm text-ink opacity-60 mt-1">
+            If that email is registered, a sign-in link is on its way.
+          </p>
+        </div>
+        <div className="px-8 py-7 flex flex-col gap-5">
+          <p className="font-mono text-sm text-ink opacity-60 leading-relaxed">
+            Click the link in the email to sign in instantly. It expires in 1 hour and can only be used once.
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </HardShadowCard>
+    )
+  }
+
+  return (
+    <HardShadowCard>
+      <div className="px-8 pt-7 pb-5 border-b-2 border-ink">
+        <h2 className="font-sans font-extrabold text-[1.75rem] leading-tight tracking-tight text-ink">
+          Sign in with a link.
+        </h2>
+        <p className="font-mono text-sm text-ink opacity-60 mt-1">
+          We'll email you a one-click sign-in link. No password needed.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col px-8 py-7 gap-5">
+        <div className="flex flex-col gap-1.5">
+          <label className="font-mono text-xs uppercase tracking-widest text-ink">
+            Email Address
+          </label>
+          <input
+            {...register('email')}
+            type="email"
+            disabled={isSubmitting}
+            placeholder="you@yourcompany.com"
+            autoComplete="email"
+            className={cn(
+              'w-full border-2 border-ink rounded-lg px-4 py-3 font-sans text-base text-ink bg-white',
+              'placeholder:text-ink/30 outline-none',
+              'focus:ring-2 focus:ring-forest/20 focus:border-forest',
+              'disabled:opacity-50 transition',
+              errors.email && 'border-brand-red focus:ring-brand-red/20 focus:border-brand-red',
+            )}
+          />
+          {errors.email && (
+            <p className="font-mono text-xs text-brand-red">{errors.email.message}</p>
+          )}
+        </div>
+
+        {formError && (
+          <div className="border-2 border-brand-red rounded-lg px-4 py-3 bg-brand-red/8">
+            <p className="font-mono text-xs text-brand-red">{formError}</p>
+          </div>
+        )}
+
+        <div className="border-t-2 border-dashed border-ink pt-5 flex flex-col gap-3">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn-ink-shadow w-full flex items-center justify-center gap-3 bg-forest text-white font-sans font-extrabold text-lg uppercase tracking-wider py-4 px-8 rounded-lg border-2 border-ink disabled:opacity-60"
+          >
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                Sending…
+              </>
+            ) : (
+              <>
+                Send Sign-In Link
+                <span className="text-xl leading-none">⇲</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isSubmitting}
+            className="font-mono text-xs text-ink opacity-50 hover:opacity-80 transition text-center"
+          >
+            ← Back to sign in
+          </button>
+        </div>
+      </form>
+    </HardShadowCard>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function LoginPage() {
-  const [mode, setMode] = useState<'password' | 'reset'>('password')
+  const [mode, setMode] = useState<'password' | 'reset' | 'magic-link'>('password')
 
   return (
     <div className="min-h-svh bg-cream flex flex-col items-center justify-center p-8 gap-8">
@@ -293,11 +437,9 @@ export function LoginPage() {
       </div>
 
       <div className="w-full max-w-md">
-        {mode === 'password' ? (
-          <PasswordForm onReset={() => setMode('reset')} />
-        ) : (
-          <ResetRequestForm onBack={() => setMode('password')} />
-        )}
+        {mode === 'password'    && <PasswordForm onReset={() => setMode('reset')} onMagicLink={() => setMode('magic-link')} />}
+        {mode === 'reset'       && <ResetRequestForm onBack={() => setMode('password')} />}
+        {mode === 'magic-link'  && <MagicLinkForm onBack={() => setMode('password')} />}
       </div>
 
       <AgencyBadge />

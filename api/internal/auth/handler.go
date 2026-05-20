@@ -98,6 +98,10 @@ func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.SetUserPassword(r.Context(), claims.TenantID, claims.Email, req.Password); err != nil {
+		if errors.Is(err, ErrPortalNotReady) {
+			utils.RespondError(w, http.StatusUnprocessableEntity, "no project configured yet")
+			return
+		}
 		utils.RespondError(w, http.StatusInternalServerError, "could not set password, please try again")
 		return
 	}
@@ -338,6 +342,10 @@ func (h *Handler) ResetPasswordConfirm(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ConfirmPasswordReset(r.Context(), req.Token, req.Password); err != nil {
 		if errors.Is(err, ErrInvalidToken) {
 			utils.RespondError(w, http.StatusUnauthorized, "this reset link is invalid or has expired")
+			return
+		}
+		if errors.Is(err, ErrPortalNotReady) {
+			utils.RespondError(w, http.StatusUnprocessableEntity, "your portal isn't fully set up yet — please use the sign-in link from your invitation email")
 			return
 		}
 		utils.RespondError(w, http.StatusInternalServerError, "could not reset password, please try again")
