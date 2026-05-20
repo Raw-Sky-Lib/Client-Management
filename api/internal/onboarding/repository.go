@@ -170,6 +170,13 @@ func (r *Repository) MarkTenantOnboarded(ctx context.Context, tenantID string) e
 	return err
 }
 
+// DeleteTenantProject removes a single tenant_projects row by agency_project_id.
+// No-ops silently if the row doesn't exist (portal may never have received the project).
+func (r *Repository) DeleteTenantProject(ctx context.Context, agencyProjectID string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM tenant_projects WHERE agency_project_id = $1`, agencyProjectID)
+	return err
+}
+
 // DeleteTenant removes the tenant and all related rows (cascades to tenant_users,
 // tenant_projects, email_confirmations).
 func (r *Repository) DeleteTenant(ctx context.Context, clientID string) error {
@@ -182,6 +189,16 @@ func (r *Repository) DeleteTenant(ctx context.Context, clientID string) error {
 		return fmt.Errorf("tenant not found: %s", clientID)
 	}
 	return nil
+}
+
+// UpdateTenantUserEmail replaces the email address for all users under a tenant.
+// Called when a client's email is changed in agency-hub so portal auth keeps working.
+func (r *Repository) UpdateTenantUserEmail(ctx context.Context, tenantID, newEmail string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE tenant_users SET email = $2 WHERE tenant_id = $1`,
+		tenantID, newEmail,
+	)
+	return err
 }
 
 func (r *Repository) UpsertTenantUser(ctx context.Context, tenantID, email string) error {

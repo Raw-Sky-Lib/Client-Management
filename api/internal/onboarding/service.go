@@ -184,6 +184,26 @@ func (s *Service) DeregisterClient(ctx context.Context, clientID string) error {
 	return nil
 }
 
+// UpdateClientEmail updates the email address stored in tenant_users for a client.
+// Called when the client's email is changed in agency-hub. Without this, magic link
+// and password reset emails go to the old address and the client cannot log in.
+func (s *Service) UpdateClientEmail(ctx context.Context, clientID, newEmail string) error {
+	if err := s.repo.UpdateTenantUserEmail(ctx, clientID, newEmail); err != nil {
+		return fmt.Errorf("update client email: %w", err)
+	}
+	return nil
+}
+
+// DeregisterProject removes the tenant_projects row for a single agency project,
+// wiping the stored Supabase credentials. Called by agency-hub when a project is deleted.
+// No-ops silently if the row never existed.
+func (s *Service) DeregisterProject(ctx context.Context, agencyProjectID string) error {
+	if err := s.repo.DeleteTenantProject(ctx, agencyProjectID); err != nil {
+		return fmt.Errorf("deregister project: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) getFirstProjectIDForTenant(ctx context.Context, tenantID string) (string, error) {
 	var id string
 	err := s.repo.db.QueryRow(ctx, `

@@ -19,5 +19,7 @@ func AdminRoutes(h *Handler) func(chi.Router) {
 		r.Post("/send-invite", h.SendInvite)
 		r.Post("/resend-invite", h.ResendInvite)
 		r.Delete("/deregister-client/{client_id}", h.DeregisterClient)
+		r.Delete("/deregister-project/{project_id}", h.DeregisterProject)
+		r.Patch("/update-client/{client_id}/email", h.UpdateClientEmail)
 	}
 }

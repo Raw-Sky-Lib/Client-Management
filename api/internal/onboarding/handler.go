@@ -226,6 +226,80 @@ func (h *Handler) DeregisterClient(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
 }
 
+// UpdateClientEmail handles PATCH /api/admin/update-client/{client_id}/email
+//
+// @Summary     Update a client's email in the portal
+// @Description Replaces the email in tenant_users so magic-link and password-reset emails go to the correct address. Called by agency-hub when a client's email is changed.
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Param       Authorization header string true "Bearer {PORTAL_ADMIN_SECRET}"
+// @Param       client_id     path   string true "Client ID (tenant_id)"
+// @Param       body          body   object true "{\"email\": \"new@example.com\"}"
+// @Success     200 {object} map[string]bool
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Router      /api/admin/update-client/{client_id}/email [patch]
+func (h *Handler) UpdateClientEmail(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	clientID := chi.URLParam(r, "client_id")
+	if clientID == "" {
+		utils.RespondError(w, http.StatusBadRequest, "client_id required")
+		return
+	}
+
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+		utils.RespondError(w, http.StatusBadRequest, "email required")
+		return
+	}
+
+	if err := h.svc.UpdateClientEmail(r.Context(), clientID, body.Email); err != nil {
+		slog.Error("update client email failed", "error", err, "client_id", clientID)
+		utils.RespondError(w, http.StatusInternalServerError, "could not update email")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"updated": true})
+}
+
+// DeregisterProject handles DELETE /api/admin/deregister-project/{project_id}
+//
+// @Summary     Deregister a single client project
+// @Description Removes the tenant_projects row and its stored Supabase credentials. Called by agency-hub when a project is deleted. Idempotent — returns 200 even if the project was never registered.
+// @Tags        admin
+// @Produce     json
+// @Param       Authorization header string true "Bearer {PORTAL_ADMIN_SECRET}"
+// @Param       project_id    path   string true "Agency project ID"
+// @Success     200 {object} map[string]bool
+// @Failure     401 {object} utils.ErrorResponse
+// @Router      /api/admin/deregister-project/{project_id} [delete]
+func (h *Handler) DeregisterProject(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	projectID := chi.URLParam(r, "project_id")
+	if projectID == "" {
+		utils.RespondError(w, http.StatusBadRequest, "project_id required")
+		return
+	}
+
+	if err := h.svc.DeregisterProject(r.Context(), projectID); err != nil {
+		slog.Error("deregister project failed", "error", err, "project_id", projectID)
+	}
+	// Always 200 — idempotent; portal may never have had this project
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
+}
+
 var userFacingErrs = []error{
 	ErrClientNotSetup,
 	ErrLinkInvalid, ErrLinkUsed, ErrLinkExpired,
