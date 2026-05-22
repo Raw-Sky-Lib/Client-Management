@@ -4,6 +4,9 @@ import { FeaturesEditor } from './features-editor'
 import { AboutEditor } from './about-editor'
 import { TestimonialsEditor } from './testimonials-editor'
 import { CTAEditor } from './cta-editor'
+import { WhyUsEditor } from './why-us-editor'
+import { ProcessEditor } from './process-editor'
+import { FeaturedProjectsEditor } from './featured-projects-editor'
 import { Field, inputClass, textareaClass } from './editor-primitives'
 
 export interface SectionEditorProps {
@@ -13,11 +16,14 @@ export interface SectionEditorProps {
 }
 
 const KNOWN_EDITORS: Record<string, ComponentType<SectionEditorProps>> = {
-  hero:         HeroEditor,
-  features:     FeaturesEditor,
-  about:        AboutEditor,
-  testimonials: TestimonialsEditor,
-  cta:          CTAEditor,
+  hero:              HeroEditor,
+  features:          FeaturesEditor,
+  about:             AboutEditor,
+  testimonials:      TestimonialsEditor,
+  cta:               CTAEditor,
+  why_us:            WhyUsEditor,
+  process:           ProcessEditor,
+  featured_projects: FeaturedProjectsEditor,
 }
 
 function formatFieldLabel(key: string): string {

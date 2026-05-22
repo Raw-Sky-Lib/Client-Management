@@ -50,12 +50,20 @@ func (s *Service) Resolve(ctx context.Context, tenantID string) (*Config, error)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt service role: %w", err)
 	}
+	var revalidateSecret string
+	if proj.RevalidateSecretEnc != "" {
+		revalidateSecret, err = utils.DecryptString(proj.RevalidateSecretEnc, s.encKey)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt revalidate secret: %w", err)
+		}
+	}
 
 	return &Config{
-		TenantID:        raw.ID,
-		SupabaseURL:     supabaseURL,
-		SupabaseAnonKey: anonKey,
-		ServiceRoleKey:  serviceRoleKey,
-		SiteURL:         proj.SiteURL,
+		TenantID:         raw.ID,
+		SupabaseURL:      supabaseURL,
+		SupabaseAnonKey:  anonKey,
+		ServiceRoleKey:   serviceRoleKey,
+		SiteURL:          proj.SiteURL,
+		RevalidateSecret: revalidateSecret,
 	}, nil
 }

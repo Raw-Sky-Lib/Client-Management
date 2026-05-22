@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { MediaPickerModal } from '@/features/media/components/media-picker-modal'
 import { SaveIndicator, type SaveState } from '@/components/shared/save-indicator'
 import { cn } from '@/lib/utils'
+import api from '@/lib/axios'
 
 const KEYS = ['seo_title', 'seo_description', 'og_image_url'] as const
 
@@ -47,6 +48,7 @@ export function SeoSettings() {
     setSaveState('saving')
     try {
       await saveAll(Object.entries(fields).map(([key, value]) => ({ key, value })))
+      api.post('/api/revalidate', { paths: ['/'] }).catch(() => null)
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2000)
     } catch {

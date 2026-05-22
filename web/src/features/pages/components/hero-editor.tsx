@@ -31,26 +31,24 @@ export function HeroEditor({ value, onChange }: SectionEditorProps) {
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="CTA Label">
-          <input
-            type="text"
-            value={hero.cta_label ?? ''}
-            onChange={e => set('cta_label', e.target.value)}
-            placeholder="Get started"
-            className={inputClass}
-          />
-        </Field>
-        <Field label="CTA URL">
-          <input
-            type="text"
-            value={hero.cta_url ?? ''}
-            onChange={e => set('cta_url', e.target.value)}
-            placeholder="/contact"
-            className={inputClass}
-          />
-        </Field>
-      </div>
+      <Field label="CTA Label">
+        <input
+          type="text"
+          value={hero.cta_label ?? ''}
+          onChange={e => set('cta_label', e.target.value)}
+          placeholder="Get started"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="CTA URL">
+        <input
+          type="text"
+          value={hero.cta_url ?? ''}
+          onChange={e => set('cta_url', e.target.value)}
+          placeholder="/contact"
+          className={inputClass}
+        />
+      </Field>
     </div>
   )
 }

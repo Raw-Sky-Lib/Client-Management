@@ -52,26 +52,24 @@ export function TestimonialsEditor({ value, onChange }: SectionEditorProps) {
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Author">
-              <input
-                type="text"
-                value={item.author}
-                onChange={e => updateItem(idx, 'author', e.target.value)}
-                placeholder="Jane Smith"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Role">
-              <input
-                type="text"
-                value={item.role}
-                onChange={e => updateItem(idx, 'role', e.target.value)}
-                placeholder="CEO, Acme Corp"
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          <Field label="Author">
+            <input
+              type="text"
+              value={item.author}
+              onChange={e => updateItem(idx, 'author', e.target.value)}
+              placeholder="Jane Smith"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Role">
+            <input
+              type="text"
+              value={item.role}
+              onChange={e => updateItem(idx, 'role', e.target.value)}
+              placeholder="CEO, Acme Corp"
+              className={inputClass}
+            />
+          </Field>
 
           <Field label="Avatar URL">
             <input

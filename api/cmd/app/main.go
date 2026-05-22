@@ -21,6 +21,7 @@ import (
 	_ "github.com/DagMT/client-portal/docs"
 	"github.com/DagMT/client-portal/internal/auth"
 	"github.com/DagMT/client-portal/internal/claude"
+	"github.com/DagMT/client-portal/internal/cms"
 	"github.com/DagMT/client-portal/internal/config"
 	"github.com/DagMT/client-portal/internal/database"
 	"github.com/DagMT/client-portal/internal/mailer"
@@ -109,6 +110,11 @@ func main() {
 	revalidateSvc := revalidate.NewService(httpClient)
 	revalidateHandler := revalidate.NewHandler(revalidateSvc)
 	logger.Trace("revalidation service ready")
+
+	logger.Trace("wiring CMS service")
+	cmsSvc := cms.NewService(httpClient)
+	cmsHandler := cms.NewHandler(cmsSvc, revalidateSvc)
+	logger.Trace("CMS service ready")
 
 	mediaHandler := media.NewHandler(httpClient)
 
@@ -201,6 +207,7 @@ func main() {
 			r.Route("/api/assistant", claude.Routes(claudeHandler))
 			r.Route("/api/revalidate", revalidate.Routes(revalidateHandler))
 			r.Route("/api/media", media.Routes(mediaHandler))
+			r.Route("/api/cms", cms.Routes(cmsHandler))
 		})
 	})
 

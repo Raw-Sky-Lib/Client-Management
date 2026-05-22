@@ -13,11 +13,12 @@ type rawTenant struct {
 }
 
 type rawTenantProject struct {
-	ID      string
-	URLEnc  string
-	AnonEnc string
-	SREnc   string
-	SiteURL string
+	ID                 string
+	URLEnc             string
+	AnonEnc            string
+	SREnc              string
+	SiteURL            string
+	RevalidateSecretEnc string
 }
 
 type Repository struct {
@@ -46,12 +47,13 @@ func (r *Repository) GetFirstProjectForTenant(ctx context.Context, tenantID stri
 	p := &rawTenantProject{}
 	err := r.db.QueryRow(ctx, `
 		SELECT id, supabase_url_encrypted, supabase_anon_encrypted,
-		       supabase_service_role_encrypted, COALESCE(site_url, '')
+		       supabase_service_role_encrypted, COALESCE(site_url, ''),
+		       COALESCE(revalidate_secret_encrypted, '')
 		FROM tenant_projects
 		WHERE tenant_id = $1
 		ORDER BY created_at ASC
 		LIMIT 1
-	`, tenantID).Scan(&p.ID, &p.URLEnc, &p.AnonEnc, &p.SREnc, &p.SiteURL)
+	`, tenantID).Scan(&p.ID, &p.URLEnc, &p.AnonEnc, &p.SREnc, &p.SiteURL, &p.RevalidateSecretEnc)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

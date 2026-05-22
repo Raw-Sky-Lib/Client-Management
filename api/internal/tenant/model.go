@@ -5,11 +5,12 @@ import "context"
 // Config holds the fully decrypted Supabase credentials for a tenant.
 // Injected into request context by ResolveTenant middleware.
 type Config struct {
-	TenantID        string
-	SupabaseURL     string
-	SupabaseAnonKey string
-	ServiceRoleKey  string
-	SiteURL         string
+	TenantID         string
+	SupabaseURL      string
+	SupabaseAnonKey  string
+	ServiceRoleKey   string
+	SiteURL          string
+	RevalidateSecret string
 }
 
 type contextKey struct{}

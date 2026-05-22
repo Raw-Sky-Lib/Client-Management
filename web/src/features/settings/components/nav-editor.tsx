@@ -18,6 +18,7 @@ import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { useNavItems, useUpdateNavItems } from '../hooks/use-nav-items'
 import { SaveIndicator, type SaveState } from '@/components/shared/save-indicator'
 import type { NavItem } from '@/types'
+import api from '@/lib/axios'
 
 type DraftItem = Omit<NavItem, 'id' | 'order'> & { _key: string }
 
@@ -141,6 +142,7 @@ export function NavEditor() {
     setSaveState('saving')
     try {
       await saveNav(items.map(({ label, url, is_external }) => ({ label, url, is_external })))
+      api.post('/api/revalidate', { paths: ['/'] }).catch(() => null)
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2000)
     } catch {

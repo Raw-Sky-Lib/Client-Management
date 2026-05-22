@@ -8,7 +8,22 @@ import (
 var (
 	ErrBadSupabaseCredentials = errors.New("invalid supabase credentials")
 	ErrBadDBURL               = errors.New("database migration failed")
+	ErrProjectNotFound        = errors.New("project not registered in portal")
 )
+
+// SyncCredentialsRequest is the body for PATCH /api/admin/projects/{agency_project_id}/credentials.
+// All fields are optional — only non-empty fields overwrite the existing stored values.
+// Used for already-registered projects where only credentials need updating (no migrations, no email).
+type SyncCredentialsRequest struct {
+	AgencyProjectID              string `json:"agency_project_id"`
+	Name                         string `json:"name"`
+	SiteURL                      string `json:"site_url"`
+	ClientSupabaseURL            string `json:"client_supabase_url"`
+	ClientSupabaseAnonKey        string `json:"client_supabase_anon_key"`
+	ClientSupabaseServiceRoleKey string `json:"client_supabase_service_role_key"`
+	ClientSupabaseDBURL          string `json:"client_supabase_db_url"`
+	RevalidateSecret             string `json:"revalidate_secret"`
+}
 
 // RegisterClientRequest is sent by agency-hub when a project is registered with the portal.
 type RegisterClientRequest struct {
@@ -21,6 +36,7 @@ type RegisterClientRequest struct {
 	ClientSupabaseServiceRoleKey string `json:"client_supabase_service_role_key" validate:"required"        example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 	ClientSupabaseDBURL          string `json:"client_supabase_db_url"           validate:"required"        example:"postgresql://postgres:password@db.abcdef.supabase.co:5432/postgres"`
 	SiteURL                      string `json:"site_url"                         validate:"omitempty,url"   example:"https://client-site.com"`
+	RevalidateSecret             string `json:"revalidate_secret"                validate:"omitempty"       example:"abc123..."`
 }
 
 // RegisteredResponse is returned by POST /api/admin/register-client.

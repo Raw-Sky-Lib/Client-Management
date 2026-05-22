@@ -35,10 +35,15 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
     },
     staleTime: 5 * 60 * 1000,
     retry: 2,
-    // Poll every 10s when no project is configured yet so the UI updates
-    // automatically once the agency pushes credentials.
-    refetchInterval: (query) =>
-      (query.state.data?.length ?? 0) === 0 ? 10_000 : false,
+    // Poll when no project exists yet (waiting for agency to push credentials),
+    // or when a project exists but has no site_url (waiting for agency to set it).
+    // Stops as soon as all projects have a site_url configured.
+    refetchInterval: (query) => {
+      const projects = query.state.data ?? []
+      if (projects.length === 0) return 10_000
+      if (projects.some(p => !p.site_url)) return 15_000
+      return false
+    },
   })
 
   const projects = data ?? []

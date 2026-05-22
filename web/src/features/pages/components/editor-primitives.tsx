@@ -1,16 +1,15 @@
 import type { ReactNode } from 'react'
 
 export const inputClass =
-  'w-full border-2 border-ink rounded-lg px-4 py-3 font-sans text-base text-ink bg-white ' +
-  'placeholder:text-ink/30 outline-none focus:ring-2 focus:ring-forest/20 focus:border-forest transition'
+  'w-full border-2 border-ink/20 rounded-lg px-3 py-2 font-mono text-xs text-ink bg-white ' +
+  'placeholder:text-ink/25 outline-none focus:border-ink transition'
 
-export const textareaClass =
-  inputClass + ' resize-none leading-relaxed'
+export const textareaClass = inputClass + ' resize-none leading-relaxed'
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="font-mono text-xs uppercase tracking-widest text-ink/60">
+      <label className="font-mono text-[0.6rem] uppercase tracking-widest text-ink/40">
         {label}
       </label>
       {children}

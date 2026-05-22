@@ -7,11 +7,17 @@ export interface SiteSettings {
   updated_at: string
 }
 
+// A single section entry in pages.sections — array element with a type discriminator.
+export interface PageSection {
+  type: string
+  [key: string]: unknown
+}
+
 export interface Page {
   id: string
   slug: string
   title: string
-  sections: Record<string, unknown>
+  sections: PageSection[]
   seo_title: string | null
   seo_description: string | null
   is_published: boolean
@@ -116,6 +122,37 @@ export interface CTASection {
   subheadline: string
   button_label: string
   button_url: string
+}
+
+export interface ProcessStep {
+  number?: number
+  title: string
+  description: string
+}
+
+export interface ProcessSection {
+  title?: string
+  subtitle?: string
+  steps: ProcessStep[]
+}
+
+export interface WhyUsItem {
+  icon?: string
+  title: string
+  description: string
+}
+
+export interface WhyUsSection {
+  title?: string
+  subtitle?: string
+  items: WhyUsItem[]
+}
+
+export interface FeaturedProjectsSection {
+  title?: string
+  subtitle?: string
+  cta_label?: string
+  cta_url?: string
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

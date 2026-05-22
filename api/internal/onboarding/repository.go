@@ -37,7 +37,7 @@ func (r *Repository) UpsertTenant(ctx context.Context, clientID string) error {
 // migration 004 data-copy rather than a real agency-hub registration.
 func (r *Repository) UpsertTenantProject(ctx context.Context,
 	tenantID, projectID, name, siteURL,
-	urlEnc, anonEnc, srEnc, dbURLEnc string,
+	urlEnc, anonEnc, srEnc, dbURLEnc, revalidateSecretEnc string,
 ) error {
 	// Remove stale migration-created placeholder rows so re-registration doesn't
 	// leave a duplicate "Default"/"My Project" entry alongside the real one.
@@ -54,17 +54,46 @@ func (r *Repository) UpsertTenantProject(ctx context.Context,
 		INSERT INTO tenant_projects
 			(tenant_id, agency_project_id, name, site_url,
 			 supabase_url_encrypted, supabase_anon_encrypted,
-			 supabase_service_role_encrypted, supabase_db_url_encrypted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			 supabase_service_role_encrypted, supabase_db_url_encrypted,
+			 revalidate_secret_encrypted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))
 		ON CONFLICT (agency_project_id) DO UPDATE SET
 			name                            = EXCLUDED.name,
-			site_url                        = EXCLUDED.site_url,
+			site_url                        = COALESCE(NULLIF(EXCLUDED.site_url, ''), tenant_projects.site_url),
 			supabase_url_encrypted          = EXCLUDED.supabase_url_encrypted,
 			supabase_anon_encrypted         = EXCLUDED.supabase_anon_encrypted,
 			supabase_service_role_encrypted = EXCLUDED.supabase_service_role_encrypted,
-			supabase_db_url_encrypted       = EXCLUDED.supabase_db_url_encrypted
-	`, tenantID, projectID, name, siteURL, urlEnc, anonEnc, srEnc, dbURLEnc)
+			supabase_db_url_encrypted       = EXCLUDED.supabase_db_url_encrypted,
+			revalidate_secret_encrypted     = COALESCE(NULLIF(EXCLUDED.revalidate_secret_encrypted, ''), tenant_projects.revalidate_secret_encrypted)
+	`, tenantID, projectID, name, siteURL, urlEnc, anonEnc, srEnc, dbURLEnc, revalidateSecretEnc)
 	return err
+}
+
+// SyncTenantProjectCredentials updates only the non-empty credential fields for an existing
+// tenant_projects row. Empty string arguments are skipped — existing values are preserved.
+// Returns ErrProjectNotFound if the row doesn't exist; caller must use RegisterClient first.
+func (r *Repository) SyncTenantProjectCredentials(ctx context.Context,
+	agencyProjectID, name, siteURL,
+	urlEnc, anonEnc, srEnc, dbURLEnc, revalidateEnc string,
+) error {
+	res, err := r.db.Exec(ctx, `
+		UPDATE tenant_projects SET
+			name                            = CASE WHEN $2 != '' THEN $2 ELSE name END,
+			site_url                        = CASE WHEN $3 != '' THEN $3 ELSE site_url END,
+			supabase_url_encrypted          = CASE WHEN $4 != '' THEN $4 ELSE supabase_url_encrypted END,
+			supabase_anon_encrypted         = CASE WHEN $5 != '' THEN $5 ELSE supabase_anon_encrypted END,
+			supabase_service_role_encrypted = CASE WHEN $6 != '' THEN $6 ELSE supabase_service_role_encrypted END,
+			supabase_db_url_encrypted       = CASE WHEN $7 != '' THEN $7 ELSE supabase_db_url_encrypted END,
+			revalidate_secret_encrypted     = CASE WHEN $8 != '' THEN $8 ELSE revalidate_secret_encrypted END
+		WHERE agency_project_id = $1
+	`, agencyProjectID, name, siteURL, urlEnc, anonEnc, srEnc, dbURLEnc, revalidateEnc)
+	if err != nil {
+		return fmt.Errorf("sync project credentials: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
 }
 
 // GetProjectIDByAgencyID returns the tenant_projects.id (portal UUID) for a given

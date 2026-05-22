@@ -31,26 +31,24 @@ export function CTAEditor({ value, onChange }: SectionEditorProps) {
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Button Label">
-          <input
-            type="text"
-            value={cta.button_label ?? ''}
-            onChange={e => set('button_label', e.target.value)}
-            placeholder="Get in touch"
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Button URL">
-          <input
-            type="text"
-            value={cta.button_url ?? ''}
-            onChange={e => set('button_url', e.target.value)}
-            placeholder="/contact"
-            className={inputClass}
-          />
-        </Field>
-      </div>
+      <Field label="Button Label">
+        <input
+          type="text"
+          value={cta.button_label ?? ''}
+          onChange={e => set('button_label', e.target.value)}
+          placeholder="Get in touch"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Button URL">
+        <input
+          type="text"
+          value={cta.button_url ?? ''}
+          onChange={e => set('button_url', e.target.value)}
+          placeholder="/contact"
+          className={inputClass}
+        />
+      </Field>
     </div>
   )
 }

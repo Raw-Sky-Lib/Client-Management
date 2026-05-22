@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router'
 import { PortalSidebar } from './portal-sidebar'
 import { PortalHeader } from './portal-header'
+import { cn } from '@/lib/utils'
 
 const ROUTE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -22,13 +23,14 @@ function getTitle(pathname: string): string {
 
 export function PortalLayout() {
   const { pathname } = useLocation()
+  const isFullScreen = pathname.startsWith('/pages/') && pathname !== '/pages'
 
   return (
     <div className="flex h-screen overflow-hidden bg-cream">
       <PortalSidebar />
       <div className="flex flex-col flex-1 min-w-0">
         <PortalHeader title={getTitle(pathname)} />
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className={cn('flex-1 min-h-0', isFullScreen ? 'overflow-hidden' : 'overflow-y-auto p-8')}>
           <Outlet />
         </main>
       </div>

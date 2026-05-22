@@ -42,26 +42,24 @@ export function FeaturesEditor({ value, onChange }: SectionEditorProps) {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Icon">
-              <input
-                type="text"
-                value={item.icon}
-                onChange={e => updateItem(idx, 'icon', e.target.value)}
-                placeholder="e.g. star, check, zap"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Title">
-              <input
-                type="text"
-                value={item.title}
-                onChange={e => updateItem(idx, 'title', e.target.value)}
-                placeholder="Feature name"
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          <Field label="Icon">
+            <input
+              type="text"
+              value={item.icon}
+              onChange={e => updateItem(idx, 'icon', e.target.value)}
+              placeholder="e.g. star, check, zap"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Title">
+            <input
+              type="text"
+              value={item.title}
+              onChange={e => updateItem(idx, 'title', e.target.value)}
+              placeholder="Feature name"
+              className={inputClass}
+            />
+          </Field>
 
           <Field label="Description">
             <textarea

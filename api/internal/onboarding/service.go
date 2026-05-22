@@ -96,6 +96,13 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	if err != nil {
 		return err
 	}
+	var revalidateEnc string
+	if req.RevalidateSecret != "" {
+		revalidateEnc, err = utils.EncryptString(req.RevalidateSecret, s.encKey)
+		if err != nil {
+			return err
+		}
+	}
 
 	// 1. Tenant identity (idempotent — existing tenants are unchanged)
 	if err := s.repo.UpsertTenant(ctx, req.ClientID); err != nil {
@@ -105,7 +112,7 @@ func (s *Service) RegisterClient(ctx context.Context, req RegisterClientRequest)
 	// 2. Project credentials
 	if err := s.repo.UpsertTenantProject(ctx,
 		req.ClientID, req.ProjectID, req.ProjectName, req.SiteURL,
-		urlEnc, anonEnc, srEnc, dbEnc,
+		urlEnc, anonEnc, srEnc, dbEnc, revalidateEnc,
 	); err != nil {
 		return fmt.Errorf("upsert tenant project: %w", err)
 	}
@@ -192,6 +199,45 @@ func (s *Service) UpdateClientEmail(ctx context.Context, clientID, newEmail stri
 		return fmt.Errorf("update client email: %w", err)
 	}
 	return nil
+}
+
+// SyncCredentials updates credentials for an already-registered project without running
+// migrations, creating buckets, or sending invite emails. Only non-empty fields overwrite
+// existing values. Returns ErrProjectNotFound if the project hasn't been registered yet.
+func (s *Service) SyncCredentials(ctx context.Context, req SyncCredentialsRequest) error {
+	var urlEnc, anonEnc, srEnc, dbEnc, revalidateEnc string
+	var err error
+	if req.ClientSupabaseURL != "" {
+		req.ClientSupabaseURL = strings.TrimRight(strings.TrimSuffix(
+			strings.TrimRight(req.ClientSupabaseURL, "/"), "/rest/v1"), "/")
+		if urlEnc, err = utils.EncryptString(req.ClientSupabaseURL, s.encKey); err != nil {
+			return err
+		}
+	}
+	if req.ClientSupabaseAnonKey != "" {
+		if anonEnc, err = utils.EncryptString(req.ClientSupabaseAnonKey, s.encKey); err != nil {
+			return err
+		}
+	}
+	if req.ClientSupabaseServiceRoleKey != "" {
+		if srEnc, err = utils.EncryptString(req.ClientSupabaseServiceRoleKey, s.encKey); err != nil {
+			return err
+		}
+	}
+	if req.ClientSupabaseDBURL != "" {
+		if dbEnc, err = utils.EncryptString(req.ClientSupabaseDBURL, s.encKey); err != nil {
+			return err
+		}
+	}
+	if req.RevalidateSecret != "" {
+		if revalidateEnc, err = utils.EncryptString(req.RevalidateSecret, s.encKey); err != nil {
+			return err
+		}
+	}
+	return s.repo.SyncTenantProjectCredentials(ctx,
+		req.AgencyProjectID, req.Name, req.SiteURL,
+		urlEnc, anonEnc, srEnc, dbEnc, revalidateEnc,
+	)
 }
 
 // DeregisterProject removes the tenant_projects row for a single agency project,

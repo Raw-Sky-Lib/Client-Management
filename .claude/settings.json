@@ -72,7 +72,9 @@
       "Bash(psql 'host=aws-0-eu-west-1.pooler.supabase.com port=6543 user=postgres.tgysvlfdsxjglbneeulx password=prodagencyhub dbname=postgres sslmode=require' -c 'SELECT tp.id, tp.tenant_id, tp.agency_project_id, tp.name, tp.site_url, tp.created_at FROM tenant_projects tp JOIN tenants t ON t.id = tp.tenant_id JOIN tenant_users tu ON tu.tenant_id = t.id WHERE tu.email ILIKE '\\\\''%dagi%'\\\\'' OR tu.email ILIKE '\\\\''%dagim%'\\\\'';')",
       "Bash(psql 'host=aws-0-eu-west-1.pooler.supabase.com port=5432 user=postgres.urmzpmpbocqsaraiyqbo password=prodagencyhub dbname=postgres sslmode=require' -c 'SELECT id, name, client_id FROM projects WHERE id = '\\\\''efa7d158-5b41-40ae-9c94-5d9b2fc145ef'\\\\'';')",
       "Bash(psql 'host=aws-0-eu-west-1.pooler.supabase.com port=6543 user=postgres.tgysvlfdsxjglbneeulx password=prodagencyhub dbname=postgres sslmode=require' -c 'DELETE FROM tenant_projects WHERE agency_project_id = '\\\\''efa7d158-5b41-40ae-9c94-5d9b2fc145ef'\\\\'' RETURNING id, name, agency_project_id;')",
-      "Bash(psql 'host=aws-0-eu-west-1.pooler.supabase.com port=6543 user=postgres.tgysvlfdsxjglbneeulx password=prodagencyhub dbname=postgres sslmode=require' -c 'SELECT tp.name, tp.agency_project_id FROM tenant_projects tp WHERE tp.tenant_id = '\\\\''cac7d654-fb82-43ab-a53d-25904ff6c5bd'\\\\''; *)"
+      "Bash(psql 'host=aws-0-eu-west-1.pooler.supabase.com port=6543 user=postgres.tgysvlfdsxjglbneeulx password=prodagencyhub dbname=postgres sslmode=require' -c 'SELECT tp.name, tp.agency_project_id FROM tenant_projects tp WHERE tp.tenant_id = '\\\\''cac7d654-fb82-43ab-a53d-25904ff6c5bd'\\\\''; *)",
+      "Bash(node_modules/.bin/next build *)",
+      "Bash(mkdir -p \"/Users/dagi/Documents/Github/Matt x Dagim/client-dagim-digital-agency/src/contexts\")"
     ],
     "additionalDirectories": [
       "/Users/dagi/Documents/Github/Matt x Dagim/format-studio-client-site-template/supabase/migrations",
@@ -100,7 +102,9 @@
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/dashboard/types",
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/dashboard/services",
       "/Users/dagi/Documents/Github/Matt x Dagim/Agency-Hub/web/src/features/dashboard/components",
-      "/Users/dagi/Documents/Github/Matt x Dagim/format-studio-client-site-template/.claude"
+      "/Users/dagi/Documents/Github/Matt x Dagim/format-studio-client-site-template/.claude",
+      "/Users/dagi/Documents/Github/Matt x Dagim/client-dagim-digital-agency/src/components/sections",
+      "/Users/dagi/Documents/Github/Matt x Dagim/client-dagim-digital-agency/src"
     ]
   }
 }

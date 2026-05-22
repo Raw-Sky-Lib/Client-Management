@@ -21,5 +21,6 @@ func AdminRoutes(h *Handler) func(chi.Router) {
 		r.Delete("/deregister-client/{client_id}", h.DeregisterClient)
 		r.Delete("/deregister-project/{project_id}", h.DeregisterProject)
 		r.Patch("/update-client/{client_id}/email", h.UpdateClientEmail)
+		r.Patch("/projects/{agency_project_id}/credentials", h.SyncProjectCredentials)
 	}
 }

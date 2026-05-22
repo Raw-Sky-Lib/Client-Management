@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useTenantSupabase } from '@/contexts/supabase-context'
 import { useUpdateSetting } from '../hooks/use-settings'
 import { SaveIndicator, type SaveState } from '@/components/shared/save-indicator'
+import api from '@/lib/axios'
 
 interface SocialLink {
   _key: string
@@ -66,6 +67,7 @@ export function SocialSettings() {
     try {
       const payload = links.map(({ label, url }) => ({ label, url }))
       await saveSetting({ key: 'social_links', value: JSON.stringify(payload) })
+      api.post('/api/revalidate', { paths: ['/'] }).catch(() => null)
       setSaveState('saved')
       setTimeout(() => setSaveState('idle'), 2000)
     } catch {

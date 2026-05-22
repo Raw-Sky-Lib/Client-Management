@@ -31,7 +31,7 @@ func (s *Service) TriggerISR(cfg *tenant.Config, paths []string) {
 	// Capture by value before the goroutine runs.
 	siteURL := cfg.SiteURL
 	tenantID := cfg.TenantID
-	secret := cfg.ServiceRoleKey
+	secret := cfg.RevalidateSecret
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

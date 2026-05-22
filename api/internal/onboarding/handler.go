@@ -300,6 +300,52 @@ func (h *Handler) DeregisterProject(w http.ResponseWriter, r *http.Request) {
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
 }
 
+// SyncProjectCredentials handles PATCH /api/admin/projects/{agency_project_id}/credentials
+//
+// @Summary     Sync credentials for an already-registered project
+// @Description Updates stored Supabase credentials without running migrations or sending emails.
+// @Description Only non-empty fields overwrite existing values. Returns 404 if the project
+// @Description has never been registered — use POST /api/admin/register-client for first-time setup.
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Param       Authorization      header string true  "Bearer {PORTAL_ADMIN_SECRET}"
+// @Param       agency_project_id  path   string true  "Agency project ID"
+// @Param       body               body   SyncCredentialsRequest false "Fields to update (all optional)"
+// @Success     200 {object} map[string]bool
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     404 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/admin/projects/{agency_project_id}/credentials [patch]
+func (h *Handler) SyncProjectCredentials(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") || authHeader[7:] != h.agencyToken {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	agencyProjectID := chi.URLParam(r, "agency_project_id")
+	if agencyProjectID == "" {
+		utils.RespondError(w, http.StatusBadRequest, "agency_project_id required")
+		return
+	}
+	var req SyncCredentialsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	req.AgencyProjectID = agencyProjectID
+	if err := h.svc.SyncCredentials(r.Context(), req); err != nil {
+		if errors.Is(err, ErrProjectNotFound) {
+			utils.RespondError(w, http.StatusNotFound, "project not registered in portal")
+			return
+		}
+		slog.Error("sync project credentials failed", "error", err, "agency_project_id", agencyProjectID)
+		utils.RespondError(w, http.StatusInternalServerError, "credential sync failed")
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]bool{"synced": true})
+}
+
 var userFacingErrs = []error{
 	ErrClientNotSetup,
 	ErrLinkInvalid, ErrLinkUsed, ErrLinkExpired,
