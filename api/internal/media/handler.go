@@ -138,6 +138,12 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	publicURL, err := h.uploadToStorage(r.Context(), cfg.SupabaseURL, cfg.ServiceRoleKey, bucket, storagePath, mimeType, file, header.Size)
 	if err != nil {
+		slog.Error("media: upload: storage failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("bucket", bucket),
+			slog.String("path", storagePath),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
@@ -181,6 +187,12 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.deleteFromStorage(r.Context(), cfg.SupabaseURL, cfg.ServiceRoleKey, req.Bucket, req.Path); err != nil {
+		slog.Error("media: delete: storage failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("bucket", req.Bucket),
+			slog.String("path", req.Path),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
@@ -222,6 +234,10 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	endpoint := cfg.SupabaseURL + "/storage/v1/object/list/" + bucket
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
+		slog.Error("media: list-files: build request failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "list failed")
 		return
 	}
@@ -231,6 +247,11 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
+		slog.Error("media: list-files: storage request failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("bucket", bucket),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "list failed")
 		return
 	}

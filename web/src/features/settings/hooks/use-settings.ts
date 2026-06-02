@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useTenantSupabase } from '@/contexts/supabase-context'
 
 export function useSetting(key: string) {
@@ -31,6 +32,7 @@ export function useUpdateSetting() {
     onSuccess: (_, { key }) => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] })
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save setting'),
   })
 }
 
@@ -55,6 +57,8 @@ export function useUpdateSettings() {
       entries.forEach(({ key }) => {
         queryClient.invalidateQueries({ queryKey: ['settings', key] })
       })
+      toast.success('Settings saved')
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save settings'),
   })
 }

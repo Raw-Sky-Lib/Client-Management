@@ -3,6 +3,7 @@ package claude
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/DagMT/client-portal/internal/tenant"
@@ -19,22 +20,7 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc, validate: validator.New()}
 }
 
-// Generate handles POST /api/assistant/generate.
-//
-// @Summary     Generate content suggestions
-// @Description Uses Claude to suggest field changes for a page section. Returns a diff preview — changes are not applied automatically.
-// @Tags        assistant
-// @Accept      json
-// @Produce     json
-// @Param       X-CSRF-Token header string true "CSRF token from GET /api/auth/csrf (double-submit cookie pattern)"
-// @Param       body         body   GenerateRequest true "Generate request"
-// @Success     200  {object} GenerateResponse
-// @Failure     400  {object} utils.ErrorResponse
-// @Failure     403  {object} utils.ErrorResponse "Missing or invalid CSRF token"
-// @Failure     429  {object} utils.ErrorResponse
-// @Failure     500  {object} utils.ErrorResponse
-// @Router      /api/assistant/generate [post]
-// @Security    CookieAuth
+// Generate handles POST /api/assistant/generate
 func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	cfg, ok := tenant.ConfigFromContext(r.Context())
 	if !ok {
@@ -47,7 +33,6 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	if err := h.validate.Struct(req); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -65,6 +50,12 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrPageNotFound), errors.Is(err, ErrSectionNotFound):
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 		default:
+			slog.Error("claude: generate: unexpected error",
+				slog.String("tenant_id", cfg.TenantID),
+				slog.String("page_slug", req.PageSlug),
+				slog.String("section_type", req.SectionType),
+				slog.String("error", err.Error()),
+			)
 			utils.RespondError(w, http.StatusInternalServerError, "The assistant is temporarily unavailable. Please try again.")
 		}
 		return

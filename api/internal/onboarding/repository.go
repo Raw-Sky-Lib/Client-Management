@@ -176,7 +176,7 @@ func (r *Repository) GetByTokenHash(ctx context.Context, hash string) (*EmailCon
 	err := r.db.QueryRow(ctx, `
 		SELECT id, tenant_id, email, token_hash, expires_at, used_at, created_at, project_id
 		FROM email_confirmations
-		WHERE token_hash = $1
+		WHERE token_hash = $1 AND token_type = 'invite'
 	`, hash).Scan(&c.ID, &c.TenantID, &c.Email, &c.TokenHash, &c.ExpiresAt, &c.UsedAt, &c.CreatedAt, &c.ProjectID)
 	if err != nil {
 		if err == pgx.ErrNoRows {

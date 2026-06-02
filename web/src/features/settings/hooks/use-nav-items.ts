@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useTenantSupabase } from '@/contexts/supabase-context'
 import type { NavItem } from '@/types'
 
@@ -36,6 +37,8 @@ export function useUpdateNavItems() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nav-items'] })
+      toast.success('Navigation saved')
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save navigation'),
   })
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import api from '@/lib/axios'
+import api, { setCSRFToken } from '@/lib/axios'
 import type { PortalUser } from '@/types'
 
 interface AuthContextValue {
@@ -17,22 +17,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Bootstrap a fresh CSRF cookie first so every subsequent mutation request works.
-    // If the access token is expired, the axios interceptor will silently refresh it
-    // before retrying the profile call — no magic link needed until the 7-day refresh
-    // token expires.
-    api
-      .get('/api/auth/csrf')
-      .then(() => api.get<PortalUser>('/api/auth/profile'))
-      .then((res) => setUser(res.data))
+    // Bootstrap CSRF token (stored in memory) and session in parallel.
+    // Profile is a GET — it doesn't need CSRF — so both can fire together.
+    Promise.all([
+      api.get<{ csrf_token: string }>('/api/auth/csrf'),
+      api.get<PortalUser>('/api/auth/profile'),
+    ])
+      .then(([csrfRes, profileRes]) => {
+        setCSRFToken(csrfRes.data.csrf_token)
+        setUser(profileRes.data)
+      })
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false))
   }, [])
 
   async function refresh() {
     try {
-      const res = await api.get<PortalUser>('/api/auth/profile')
-      setUser(res.data)
+      // Re-bootstrap CSRF and session together — ensures mutations work
+      // immediately after the call (e.g. right after login/reset).
+      const [csrfRes, profileRes] = await Promise.all([
+        api.get<{ csrf_token: string }>('/api/auth/csrf'),
+        api.get<PortalUser>('/api/auth/profile'),
+      ])
+      setCSRFToken(csrfRes.data.csrf_token)
+      setUser(profileRes.data)
     } catch {
       setUser(null)
     }

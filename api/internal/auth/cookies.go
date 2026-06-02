@@ -26,13 +26,16 @@ func SetAuthCookies(w http.ResponseWriter, accessToken, refreshToken string, sec
 	})
 }
 
-func ClearAuthCookies(w http.ResponseWriter) {
+// ClearAuthCookies expires both auth cookies. The secure flag must match the original
+// Set-Cookie attributes — browsers silently ignore Max-Age=-1 if Secure doesn't match.
+func ClearAuthCookies(w http.ResponseWriter, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -41,6 +44,7 @@ func ClearAuthCookies(w http.ResponseWriter) {
 		Path:     "/api/auth/refresh",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }

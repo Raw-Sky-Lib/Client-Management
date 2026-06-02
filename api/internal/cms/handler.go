@@ -2,6 +2,7 @@ package cms
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/DagMT/client-portal/internal/revalidate"
@@ -40,6 +41,11 @@ func (h *Handler) UpdateSections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.UpdatePageSections(r.Context(), cfg, slug, req.Sections); err != nil {
+		slog.Error("cms: update-sections: failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("slug", slug),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "failed to update page sections")
 		return
 	}
@@ -50,6 +56,7 @@ func (h *Handler) UpdateSections(w http.ResponseWriter, r *http.Request) {
 	}
 	h.revalidate.TriggerISR(cfg, []string{"/", pagePath})
 
+	slog.Info("cms: update-sections: ok", slog.String("tenant_id", cfg.TenantID), slog.String("slug", slug))
 	utils.RespondJSON(w, http.StatusOK, utils.OKResponse{OK: true})
 }
 
@@ -74,6 +81,12 @@ func (h *Handler) UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.UpdatePageVisibility(r.Context(), cfg, slug, req.IsPublished); err != nil {
+		slog.Error("cms: update-visibility: failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("slug", slug),
+			slog.Bool("is_published", req.IsPublished),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "failed to update page visibility")
 		return
 	}
@@ -84,10 +97,14 @@ func (h *Handler) UpdateVisibility(w http.ResponseWriter, r *http.Request) {
 	}
 	h.revalidate.TriggerISR(cfg, []string{"/", pagePath})
 
+	slog.Info("cms: update-visibility: ok",
+		slog.String("tenant_id", cfg.TenantID),
+		slog.String("slug", slug),
+		slog.Bool("is_published", req.IsPublished),
+	)
 	utils.RespondJSON(w, http.StatusOK, utils.OKResponse{OK: true})
 }
 
-// isValidSlug allows lowercase letters, digits, hyphens, and underscores only.
 func isValidSlug(s string) bool {
 	if s == "" || len(s) > 100 {
 		return false

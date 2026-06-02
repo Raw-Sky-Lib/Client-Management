@@ -1,18 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { isAxiosError } from 'axios'
 import { AgencyBadge } from '@/components/ui/agency-badge'
 import api from '@/lib/axios'
+import { useAuth } from '@/contexts/auth-context'
 
 export function AuthCallbackPage() {
-  const navigate = useNavigate()
-  const [error, setError]   = useState<string | null>(null)
+  const navigate        = useNavigate()
+  const { refresh }     = useAuth()
+  const [error, setError] = useState<string | null>(null)
+  // Guard against React StrictMode double-invocation and concurrent calls.
+  const didRun = useRef(false)
 
   useEffect(() => {
+    if (didRun.current) return
+    didRun.current = true
+
     // Supabase delivers tokens in the URL fragment, not query params.
     // e.g. /auth/callback#access_token=...&type=magiclink
     const params           = new URLSearchParams(window.location.hash.slice(1))
     const accessToken      = params.get('access_token')
+    const tokenType        = params.get('type')
     const errorDescription = params.get('error_description')
 
     if (errorDescription) {
@@ -24,9 +32,18 @@ export function AuthCallbackPage() {
       return
     }
 
+    // First-time invite/signup → welcome page to set a password.
+    // Returning magic-link login → dashboard directly.
+    const destination = (tokenType === 'invite' || tokenType === 'signup') ? '/welcome' : '/dashboard'
+
     api
       .post('/api/auth/exchange', { access_token: accessToken })
-      .then(() => navigate('/dashboard', { replace: true }))
+      .then(async () => {
+        // Must refresh auth context before navigating — ProtectedRoute reads
+        // user from context and will redirect to /login if it's still null.
+        await refresh()
+        navigate(destination, { replace: true })
+      })
       .catch((err) => {
         if (isAxiosError(err)) {
           setError(err.response?.data?.error ?? 'Sign-in failed. Please try again.')
@@ -34,7 +51,7 @@ export function AuthCallbackPage() {
           setError('Something went wrong. Please try again.')
         }
       })
-  }, [navigate])
+  }, [navigate, refresh])
 
   if (error) {
     return (
@@ -43,8 +60,7 @@ export function AuthCallbackPage() {
           <div className="w-3 h-3 rounded-full bg-brand-red border-2 border-ink shrink-0" />
           Client Portal
         </div>
-        <div className="w-full max-w-md border-2 border-ink rounded-card bg-white px-8 py-7 text-center"
-          style={{ boxShadow: '8px 8px 0 #1C1C1A' }}>
+        <div className="w-full max-w-md border-2 border-ink rounded-card bg-white px-8 py-7 text-center [box-shadow:8px_8px_0_#1C1C1A]">
           <div className="w-8 h-8 rounded-full bg-brand-red border-2 border-ink flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-mono font-bold text-sm leading-none">✕</span>
           </div>

@@ -82,7 +82,7 @@ func (r *Repository) GetLoginToken(ctx context.Context, hash string) (*TokenReco
 	rec := &TokenRecord{}
 	err := r.db.QueryRow(ctx, `
 		SELECT id, tenant_id, email, expires_at, used_at
-		FROM email_confirmations WHERE token_hash = $1
+		FROM email_confirmations WHERE token_hash = $1 AND token_type = 'login'
 	`, hash).Scan(&rec.ID, &rec.TenantID, &rec.Email, &rec.ExpiresAt, &rec.UsedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {

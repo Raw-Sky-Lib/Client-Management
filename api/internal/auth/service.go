@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,13 +21,11 @@ import (
 )
 
 var (
-	ErrEmailNotRegistered = errors.New("email not registered")
-	ErrInvalidToken       = errors.New("invalid or expired token")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	// ErrPortalNotReady is returned when a password reset is attempted before the
-	// client's Supabase project credentials have been configured in the portal.
-	// Password auth is Supabase-backed, so it cannot work without a project.
-	ErrPortalNotReady = errors.New("portal not ready")
+	ErrEmailNotRegistered  = errors.New("email not registered")
+	ErrInvalidToken        = errors.New("invalid or expired token")
+	ErrInvalidCredentials  = errors.New("invalid email or password")
+	ErrPortalNotReady      = errors.New("portal not ready")
+	ErrSupabaseUnreachable = errors.New("supabase project unreachable")
 )
 
 type Service struct {
@@ -119,15 +118,29 @@ func (s *Service) verifyPassword(ctx context.Context, supabaseURL, anonKey, emai
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("supabase auth: %w", err)
+		slog.Error("supabase password auth: network error",
+			slog.String("url", supabaseURL),
+			slog.String("error", err.Error()),
+		)
+		return "", ErrSupabaseUnreachable
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized {
+	// 400 / 401 / 422 are all auth-failure responses from Supabase.
+	// 422 is returned in some versions for email-not-confirmed / invalid credentials.
+	if resp.StatusCode == http.StatusBadRequest ||
+		resp.StatusCode == http.StatusUnauthorized ||
+		resp.StatusCode == http.StatusUnprocessableEntity {
 		return "", ErrInvalidCredentials
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("supabase password auth status %d", resp.StatusCode)
+		raw, _ := io.ReadAll(resp.Body)
+		slog.Error("supabase password auth: unexpected status",
+			slog.Int("status", resp.StatusCode),
+			slog.String("url", supabaseURL),
+			slog.String("body", string(raw)),
+		)
+		return "", ErrSupabaseUnreachable
 	}
 
 	var result struct {
@@ -230,46 +243,57 @@ func (s *Service) ValidateResetToken(ctx context.Context, token string) (bool, e
 	return true, nil
 }
 
-// ConfirmPasswordReset validates the token and sets the new password.
-// It does not issue a session — the user must sign in after resetting.
-func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password string) error {
+// ConfirmPasswordReset validates the token, sets the new password, and returns portal
+// claims so the caller can issue a session — no separate sign-in step needed.
+func (s *Service) ConfirmPasswordReset(ctx context.Context, token, password string) (*PortalClaims, error) {
 	rec, err := s.repo.GetLoginToken(ctx, hashToken(token))
 	if err != nil {
-		return fmt.Errorf("lookup token: %w", err)
+		return nil, fmt.Errorf("lookup token: %w", err)
 	}
 	if rec == nil || rec.UsedAt != nil || time.Now().After(rec.ExpiresAt) {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
 	proj, err := s.repo.GetFirstProjectForTenant(ctx, rec.TenantID)
 	if err != nil {
-		return fmt.Errorf("lookup project: %w", err)
+		return nil, fmt.Errorf("lookup project: %w", err)
 	}
 	if proj == nil {
 		// No Supabase project configured yet — password auth is unavailable.
-		// Client should use the magic-link sign-in or wait for the agency to push credentials.
-		return ErrPortalNotReady
+		return nil, ErrPortalNotReady
 	}
 
 	supabaseURL, err := utils.DecryptString(proj.URLEnc, s.encKey)
 	if err != nil {
-		return fmt.Errorf("decrypt url: %w", err)
+		return nil, fmt.Errorf("decrypt url: %w", err)
 	}
 	serviceRoleKey, err := utils.DecryptString(proj.SREnc, s.encKey)
 	if err != nil {
-		return fmt.Errorf("decrypt service role: %w", err)
+		return nil, fmt.Errorf("decrypt service role: %w", err)
 	}
 
 	// Ensure the Supabase user exists — createSupabaseUser during RegisterClient is
 	// non-fatal, so the user may not have been created if it failed silently.
-	userID, err := s.ensureSupabaseUser(ctx, supabaseURL, serviceRoleKey, rec.Email)
+	supabaseUserID, err := s.ensureSupabaseUser(ctx, supabaseURL, serviceRoleKey, rec.Email)
 	if err != nil {
-		return fmt.Errorf("ensure supabase user: %w", err)
+		return nil, fmt.Errorf("ensure supabase user: %w", err)
 	}
-	if err := s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, userID, password); err != nil {
-		return fmt.Errorf("update password: %w", err)
+	if err := s.updateSupabasePassword(ctx, supabaseURL, serviceRoleKey, supabaseUserID, password); err != nil {
+		return nil, fmt.Errorf("update password: %w", err)
 	}
-	return s.repo.MarkLoginTokenUsed(ctx, rec.ID)
+	if err := s.repo.MarkLoginTokenUsed(ctx, rec.ID); err != nil {
+		return nil, fmt.Errorf("mark token used: %w", err)
+	}
+
+	portalUserID, err := s.repo.GetTenantUserID(ctx, rec.TenantID, rec.Email)
+	if err != nil {
+		return nil, fmt.Errorf("get portal user id: %w", err)
+	}
+	return &PortalClaims{
+		UserID:   portalUserID,
+		TenantID: rec.TenantID,
+		Email:    rec.Email,
+	}, nil
 }
 
 // ensureSupabaseUser returns the Supabase user ID for email, creating the user if absent.
@@ -300,7 +324,8 @@ func (s *Service) ensureSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("supabase create user: %w", err)
+		slog.Error("supabase create user: network error", slog.String("url", supabaseURL), slog.String("error", err.Error()))
+		return "", ErrSupabaseUnreachable
 	}
 	defer resp.Body.Close()
 
@@ -542,7 +567,7 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken string) (
 }
 
 func (s *Service) Logout(w http.ResponseWriter) {
-	ClearAuthCookies(w)
+	ClearAuthCookies(w, s.secure)
 }
 
 func (s *Service) issueAccessToken(claims *PortalClaims) (string, error) {

@@ -13,7 +13,7 @@ func Routes(h *Handler, magicLinkRL func(http.Handler) http.Handler, authenticat
 	return func(r chi.Router) {
 		r.Post("/login", h.Login)
 		r.With(magicLinkRL).Post("/magic-link", h.MagicLink)
-		r.With(magicLinkRL).Get("/login/verify", h.LoginVerify)
+		r.Get("/login/verify", h.LoginVerify) // one-time token is its own replay protection
 		r.With(magicLinkRL).Post("/reset-password/request", h.ResetPasswordRequest)
 		r.Get("/reset-password/verify", h.ResetPasswordVerify)
 		r.Post("/reset-password/confirm", h.ResetPasswordConfirm)

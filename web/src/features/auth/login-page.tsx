@@ -44,6 +44,8 @@ function PasswordForm({
         const status = err.response?.status
         if (status === 401) {
           setFormError('Incorrect email or password.')
+        } else if (status === 503) {
+          setFormError('Password sign-in is unavailable right now. Use "Send me a sign-in link" below instead.')
         } else {
           setFormError((err.response?.data?.error as string) || 'Something went wrong. Please try again.')
         }

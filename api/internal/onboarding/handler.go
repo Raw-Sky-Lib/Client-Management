@@ -178,17 +178,20 @@ func (h *Handler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.RegisterClient(r.Context(), req); err != nil {
-		slog.Error("register client failed", "error", err)
 		switch {
 		case errors.Is(err, ErrBadSupabaseCredentials):
+			slog.Warn("onboarding: register-client: bad supabase credentials", slog.String("client_id", req.ClientID), slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, ErrBadDBURL):
+			slog.Warn("onboarding: register-client: bad db url", slog.String("client_id", req.ClientID), slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusBadRequest, err.Error())
 		default:
+			slog.Error("onboarding: register-client: unexpected error", slog.String("client_id", req.ClientID), slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusInternalServerError, "registration failed")
 		}
 		return
 	}
+	slog.Info("onboarding: register-client: ok", slog.String("client_id", req.ClientID), slog.String("email", req.Email))
 	utils.RespondJSON(w, http.StatusCreated, map[string]bool{"registered": true})
 }
 
@@ -262,10 +265,14 @@ func (h *Handler) UpdateClientEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.UpdateClientEmail(r.Context(), clientID, body.Email); err != nil {
-		slog.Error("update client email failed", "error", err, "client_id", clientID)
+		slog.Error("onboarding: update-email: failed",
+			slog.String("client_id", clientID),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "could not update email")
 		return
 	}
+	slog.Info("onboarding: update-email: ok", slog.String("client_id", clientID))
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"updated": true})
 }
 
@@ -294,7 +301,10 @@ func (h *Handler) DeregisterProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.DeregisterProject(r.Context(), projectID); err != nil {
-		slog.Error("deregister project failed", "error", err, "project_id", projectID)
+		slog.Error("onboarding: deregister-project: failed",
+			slog.String("project_id", projectID),
+			slog.String("error", err.Error()),
+		)
 	}
 	// Always 200 — idempotent; portal may never have had this project
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"deregistered": true})
@@ -339,10 +349,14 @@ func (h *Handler) SyncProjectCredentials(w http.ResponseWriter, r *http.Request)
 			utils.RespondError(w, http.StatusNotFound, "project not registered in portal")
 			return
 		}
-		slog.Error("sync project credentials failed", "error", err, "agency_project_id", agencyProjectID)
+		slog.Error("onboarding: sync-credentials: failed",
+			slog.String("agency_project_id", agencyProjectID),
+			slog.String("error", err.Error()),
+		)
 		utils.RespondError(w, http.StatusInternalServerError, "credential sync failed")
 		return
 	}
+	slog.Info("onboarding: sync-credentials: ok", slog.String("agency_project_id", agencyProjectID))
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"synced": true})
 }
 

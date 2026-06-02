@@ -2,6 +2,7 @@ package revalidate
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/DagMT/client-portal/internal/tenant"
@@ -17,19 +18,6 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Trigger handles POST /api/revalidate
-//
-// @Summary     Trigger ISR revalidation
-// @Description Fires a non-blocking revalidation request to the client's live site.
-// @Tags        revalidate
-// @Accept      json
-// @Produce     json
-// @Param       X-CSRF-Token header string true "CSRF token"
-// @Param       body body object true "Paths to revalidate"
-// @Success     200 {object} map[string]bool
-// @Failure     400 {object} utils.ErrorResponse
-// @Failure     401 {object} utils.ErrorResponse
-// @Router      /api/revalidate [post]
-// @Security    CookieAuth
 func (h *Handler) Trigger(w http.ResponseWriter, r *http.Request) {
 	cfg, ok := tenant.ConfigFromContext(r.Context())
 	if !ok {
@@ -45,6 +33,13 @@ func (h *Handler) Trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cfg.SiteURL == "" {
+		slog.Warn("revalidate: trigger: no site_url configured", slog.String("tenant_id", cfg.TenantID))
+		utils.RespondError(w, http.StatusUnprocessableEntity, "no site URL configured for this tenant")
+		return
+	}
+
+	slog.Info("revalidate: trigger", slog.String("tenant_id", cfg.TenantID), slog.Any("paths", req.Paths))
 	h.svc.TriggerISR(cfg, req.Paths)
 	utils.RespondJSON(w, http.StatusOK, map[string]bool{"triggered": true})
 }
