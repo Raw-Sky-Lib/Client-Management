@@ -1,6 +1,7 @@
 import type { AboutSection } from '@/types'
 import type { SectionEditorProps } from './section-editor'
-import { Field, inputClass, textareaClass } from './editor-primitives'
+import { Field, textareaClass } from './editor-primitives'
+import { ImagePickerField } from './image-picker-field'
 
 export function AboutEditor({ value, onChange }: SectionEditorProps) {
   const about = value as Partial<AboutSection>
@@ -17,15 +18,11 @@ export function AboutEditor({ value, onChange }: SectionEditorProps) {
         />
       </Field>
 
-      <Field label="Image URL">
-        <input
-          type="text"
-          value={about.image_url ?? ''}
-          onChange={e => onChange({ ...value, image_url: e.target.value })}
-          placeholder="https://… (optional)"
-          className={inputClass}
-        />
-      </Field>
+      <ImagePickerField
+        label="Section Image"
+        value={about.image_url ?? ''}
+        onChange={url => onChange({ ...value, image_url: url })}
+      />
     </div>
   )
 }

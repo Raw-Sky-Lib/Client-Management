@@ -2,8 +2,9 @@ import { Plus, Trash2 } from 'lucide-react'
 import type { TestimonialsSection, TestimonialItem } from '@/types'
 import type { SectionEditorProps } from './section-editor'
 import { Field, inputClass, textareaClass } from './editor-primitives'
+import { ImagePickerField } from './image-picker-field'
 
-const EMPTY_ITEM: TestimonialItem = { quote: '', author: '', role: '', avatar: '' }
+const EMPTY_ITEM: TestimonialItem = { quote: '', author: '', role: '', avatar_url: '' }
 
 export function TestimonialsEditor({ value, onChange }: SectionEditorProps) {
   const section = value as Partial<TestimonialsSection>
@@ -61,6 +62,7 @@ export function TestimonialsEditor({ value, onChange }: SectionEditorProps) {
               className={inputClass}
             />
           </Field>
+
           <Field label="Role">
             <input
               type="text"
@@ -71,15 +73,11 @@ export function TestimonialsEditor({ value, onChange }: SectionEditorProps) {
             />
           </Field>
 
-          <Field label="Avatar URL">
-            <input
-              type="text"
-              value={item.avatar ?? ''}
-              onChange={e => updateItem(idx, 'avatar', e.target.value)}
-              placeholder="https://… (optional)"
-              className={inputClass}
-            />
-          </Field>
+          <ImagePickerField
+            label="Avatar"
+            value={item.avatar_url ?? ''}
+            onChange={url => updateItem(idx, 'avatar_url', url)}
+          />
         </div>
       ))}
 

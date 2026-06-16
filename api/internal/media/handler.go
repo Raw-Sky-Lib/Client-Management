@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -269,6 +268,93 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	w.Write(respBody)
 }
 
+// CreateFolder handles POST /api/media/folder
+//
+// Creates a folder in Supabase Storage by uploading a zero-byte .gitkeep file.
+// Idempotent — uploading to an existing path is a no-op (x-upsert: true).
+//
+// @Summary     Create a storage folder
+// @Tags        media
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{ path: string, bucket?: string }"
+// @Success     200 {object} map[string]string
+// @Failure     400 {object} utils.ErrorResponse
+// @Failure     401 {object} utils.ErrorResponse
+// @Failure     500 {object} utils.ErrorResponse
+// @Router      /api/media/folder [post]
+// @Security    CookieAuth
+func (h *Handler) CreateFolder(w http.ResponseWriter, r *http.Request) {
+	cfg, ok := tenant.ConfigFromContext(r.Context())
+	if !ok {
+		utils.RespondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		Path   string `json:"path"`
+		Bucket string `json:"bucket"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.Path = strings.Trim(req.Path, "/")
+	if req.Path == "" {
+		utils.RespondError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if req.Bucket == "" {
+		req.Bucket = bucketNameFromSiteURL(cfg.SiteURL)
+	}
+
+	placeholderPath := req.Path + "/.gitkeep"
+	endpoint := cfg.SupabaseURL + "/storage/v1/object/" + req.Bucket + "/" + placeholderPath
+	httpReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, bytes.NewReader([]byte{}))
+	if err != nil {
+		slog.Error("media: create-folder: build request failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("path", req.Path),
+			slog.String("error", err.Error()),
+		)
+		utils.RespondError(w, http.StatusInternalServerError, "failed to create folder")
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/octet-stream")
+	httpReq.Header.Set("Authorization", "Bearer "+cfg.ServiceRoleKey)
+	httpReq.Header.Set("apikey", cfg.ServiceRoleKey)
+	httpReq.Header.Set("x-upsert", "true")
+	httpReq.ContentLength = 0
+
+	resp, err := h.httpClient.Do(httpReq)
+	if err != nil {
+		slog.Error("media: create-folder: storage request failed",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("path", req.Path),
+			slog.String("error", err.Error()),
+		)
+		utils.RespondError(w, http.StatusInternalServerError, "failed to create folder")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(resp.Body)
+		slog.Error("media: create-folder: storage error",
+			slog.String("tenant_id", cfg.TenantID),
+			slog.String("path", req.Path),
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(raw)),
+		)
+		utils.RespondError(w, http.StatusInternalServerError, "failed to create folder")
+		return
+	}
+
+	slog.Info("media: create-folder: ok", slog.String("tenant_id", cfg.TenantID), slog.String("path", req.Path))
+	utils.RespondJSON(w, http.StatusOK, map[string]string{"folder": req.Path})
+}
+
 // ── internal helpers ────────────────────────────────────────────────────────
 
 func (h *Handler) createBucket(ctx context.Context, supabaseURL, serviceRoleKey, bucketName string) error {
@@ -348,25 +434,8 @@ func (h *Handler) deleteFromStorage(ctx context.Context, supabaseURL, serviceRol
 	return nil
 }
 
-func bucketNameFromSiteURL(siteURL string) string {
-	u, err := url.Parse(siteURL)
-	if err != nil || u.Hostname() == "" {
-		return "media"
-	}
-	name := strings.ToLower(u.Hostname())
-	name = strings.ReplaceAll(name, ".", "-")
-	var sb strings.Builder
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			sb.WriteRune(r)
-		}
-	}
-	name = strings.Trim(sb.String(), "-")
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	if len(name) < 3 {
-		return "media"
-	}
-	return name
+// bucketNameFromSiteURL always returns "media" — the fixed bucket name used by
+// all client Supabase projects (matches the 006_media.sql migration).
+func bucketNameFromSiteURL(_ string) string {
+	return "media"
 }

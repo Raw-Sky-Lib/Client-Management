@@ -26,6 +26,7 @@ function PasswordForm({
   onMagicLink: () => void
 }) {
   const [formError, setFormError] = useState<string | null>(null)
+  const [devDetail, setDevDetail] = useState<string | null>(null)
   const { refresh } = useAuth()
   const navigate    = useNavigate()
 
@@ -35,6 +36,7 @@ function PasswordForm({
 
   async function onSubmit(values: PasswordValues) {
     setFormError(null)
+    setDevDetail(null)
     try {
       await api.post('/api/auth/login', { email: values.email, password: values.password })
       await refresh()
@@ -42,12 +44,20 @@ function PasswordForm({
     } catch (err) {
       if (isAxiosError(err)) {
         const status = err.response?.status
+        const data = err.response?.data as { error?: string; code?: string } | undefined
+        const serverMsg = data?.error
+        const code = data?.code
         if (status === 401) {
           setFormError('Incorrect email or password.')
         } else if (status === 503) {
-          setFormError('Password sign-in is unavailable right now. Use "Send me a sign-in link" below instead.')
+          // Backend distinguishes: DNS failure (project paused/deleted) vs transient outage.
+          // Trust the backend's already-tailored message; fall back if missing.
+          setFormError(serverMsg || 'Password sign-in is temporarily unavailable.')
+          if (import.meta.env.DEV && code) {
+            setDevDetail(`code: ${code} · admin: check API log for "auth: login:" line`)
+          }
         } else {
-          setFormError((err.response?.data?.error as string) || 'Something went wrong. Please try again.')
+          setFormError(serverMsg || 'Something went wrong. Please try again.')
         }
       } else {
         setFormError('Something went wrong. Please try again.')
@@ -116,6 +126,11 @@ function PasswordForm({
         {formError && (
           <div className="border-2 border-brand-red rounded-lg px-4 py-3 bg-brand-red/8">
             <p className="font-mono text-xs text-brand-red">{formError}</p>
+            {devDetail && (
+              <p className="font-mono text-[0.65rem] text-brand-red/70 mt-1.5 pt-1.5 border-t border-brand-red/20">
+                dev · {devDetail}
+              </p>
+            )}
           </div>
         )}
 

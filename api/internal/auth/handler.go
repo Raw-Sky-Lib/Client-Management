@@ -44,9 +44,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
 			utils.RespondError(w, http.StatusUnauthorized, "incorrect email or password")
+		case errors.Is(err, ErrSupabaseDNSFailure):
+			slog.Warn("auth: login: supabase project not found (DNS)", slog.String("email", req.Email))
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_dns_failure",
+				"We can't reach your workspace. This usually means your portal is paused or hasn't finished setup — your administrator needs to look at it.")
 		case errors.Is(err, ErrSupabaseUnreachable):
 			slog.Warn("auth: login: supabase unreachable", slog.String("email", req.Email), slog.String("error", err.Error()))
-			utils.RespondError(w, http.StatusServiceUnavailable, "password sign-in is unavailable right now — use the magic link option instead")
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_unreachable",
+				"Password sign-in is temporarily unavailable. Try the magic-link option below — it works even when your workspace data is briefly offline.")
 		default:
 			slog.Error("auth: login: unexpected error", slog.String("email", req.Email), slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusInternalServerError, "something went wrong, please try again")
@@ -82,9 +87,14 @@ func (h *Handler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrPortalNotReady):
 			utils.RespondError(w, http.StatusUnprocessableEntity, "no project configured yet")
+		case errors.Is(err, ErrSupabaseDNSFailure):
+			slog.Warn("auth: set-password: supabase project not found (DNS)", slog.String("tenant_id", claims.TenantID))
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_dns_failure",
+				"We can't reach your workspace right now. Your administrator needs to check the portal configuration.")
 		case errors.Is(err, ErrSupabaseUnreachable):
 			slog.Warn("auth: set-password: supabase unreachable", slog.String("tenant_id", claims.TenantID))
-			utils.RespondError(w, http.StatusServiceUnavailable, "could not set password — Supabase project is unreachable")
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_unreachable",
+				"Couldn't set your password right now — your workspace data is briefly offline. Try again in a moment.")
 		default:
 			slog.Error("auth: set-password: unexpected error", slog.String("tenant_id", claims.TenantID), slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusInternalServerError, "could not set password, please try again")
@@ -257,9 +267,14 @@ func (h *Handler) ResetPasswordConfirm(w http.ResponseWriter, r *http.Request) {
 			utils.RespondError(w, http.StatusUnauthorized, "this reset link is invalid or has expired")
 		case errors.Is(err, ErrPortalNotReady):
 			utils.RespondError(w, http.StatusUnprocessableEntity, "your portal isn't fully set up yet — please use the sign-in link from your invitation email")
+		case errors.Is(err, ErrSupabaseDNSFailure):
+			slog.Warn("auth: reset-password-confirm: supabase project not found (DNS)")
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_dns_failure",
+				"We can't reach your workspace. Your administrator needs to check the portal configuration before you can reset your password.")
 		case errors.Is(err, ErrSupabaseUnreachable):
 			slog.Warn("auth: reset-password-confirm: supabase unreachable")
-			utils.RespondError(w, http.StatusServiceUnavailable, "password reset is unavailable right now — use the magic link sign-in instead")
+			utils.RespondErrorWithCode(w, http.StatusServiceUnavailable, "supabase_unreachable",
+				"Password reset is temporarily unavailable. Try the magic-link sign-in from the login page instead.")
 		default:
 			slog.Error("auth: reset-password-confirm: unexpected error", slog.String("error", err.Error()))
 			utils.RespondError(w, http.StatusInternalServerError, "could not reset password, please try again")

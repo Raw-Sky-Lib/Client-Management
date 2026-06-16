@@ -424,27 +424,8 @@ func (s *Service) getSupabaseUserByEmail(ctx context.Context, supabaseURL, servi
 	return result.Users[0].ID, nil
 }
 
-func bucketNameFromSiteURL(siteURL string) string {
-	u, err := url.Parse(siteURL)
-	if err != nil || u.Hostname() == "" {
-		return "media"
-	}
-	name := strings.ToLower(u.Hostname())
-	name = strings.ReplaceAll(name, ".", "-")
-	var sb strings.Builder
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			sb.WriteRune(r)
-		}
-	}
-	name = strings.Trim(sb.String(), "-")
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	if len(name) < 3 {
-		return "media"
-	}
-	return name
+func bucketNameFromSiteURL(_ string) string {
+	return "media"
 }
 
 func (s *Service) createDefaultBucket(ctx context.Context, supabaseURL, serviceRoleKey, bucketName string) error {

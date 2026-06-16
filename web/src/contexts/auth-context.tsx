@@ -17,29 +17,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Bootstrap CSRF token (stored in memory) and session in parallel.
-    // Profile is a GET — it doesn't need CSRF — so both can fire together.
-    Promise.all([
-      api.get<{ csrf_token: string }>('/api/auth/csrf'),
-      api.get<PortalUser>('/api/auth/profile'),
-    ])
-      .then(([csrfRes, profileRes]) => {
+    void bootstrap()
+    async function bootstrap() {
+      // CSRF must be set even when the user is unauthenticated — otherwise the
+      // login / magic-link / reset-password forms can't attach the header and
+      // every submission has to round-trip through the 403 retry path.
+      try {
+        const csrfRes = await api.get<{ csrf_token: string }>('/api/auth/csrf')
         setCSRFToken(csrfRes.data.csrf_token)
+      } catch { /* recovered by axios 403 retry on first mutation */ }
+      try {
+        const profileRes = await api.get<PortalUser>('/api/auth/profile')
         setUser(profileRes.data)
-      })
-      .catch(() => setUser(null))
-      .finally(() => setIsLoading(false))
+      } catch {
+        setUser(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
   }, [])
 
   async function refresh() {
+    // Re-bootstrap CSRF first so the in-memory token reflects the latest cookie,
+    // then fetch the profile. Same independence rule as the initial bootstrap.
     try {
-      // Re-bootstrap CSRF and session together — ensures mutations work
-      // immediately after the call (e.g. right after login/reset).
-      const [csrfRes, profileRes] = await Promise.all([
-        api.get<{ csrf_token: string }>('/api/auth/csrf'),
-        api.get<PortalUser>('/api/auth/profile'),
-      ])
+      const csrfRes = await api.get<{ csrf_token: string }>('/api/auth/csrf')
       setCSRFToken(csrfRes.data.csrf_token)
+    } catch { /* recoverable */ }
+    try {
+      const profileRes = await api.get<PortalUser>('/api/auth/profile')
       setUser(profileRes.data)
     } catch {
       setUser(null)

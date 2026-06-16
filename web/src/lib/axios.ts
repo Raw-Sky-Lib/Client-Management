@@ -20,13 +20,28 @@ const api = axios.create({
   withCredentials: true,
 })
 
-// ─── Request interceptor: attach in-memory CSRF to mutations ─────────────────
+// ─── Request interceptor: attach CSRF to mutations ───────────────────────────
+// Primary source is the in-memory token (set by AuthProvider after GET /csrf).
+// Fallback is the csrf_token cookie itself — it's intentionally non-HttpOnly
+// for the double-submit pattern, so reading it from JS doesn't reduce security
+// vs. the in-memory pattern. Fallback covers the window between page load and
+// the bootstrap completing, and any other case where the in-memory state and
+// the cookie drift apart.
 const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete'])
+
+function readCSRFCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.split('; ').find((c) => c.startsWith('csrf_token='))
+  if (!match) return null
+  const value = match.split('=')[1]
+  return value ? decodeURIComponent(value) : null
+}
 
 api.interceptors.request.use((config) => {
   const method = config.method?.toLowerCase() ?? ''
-  if (MUTATION_METHODS.has(method) && csrfToken) {
-    config.headers['X-CSRF-Token'] = csrfToken
+  if (MUTATION_METHODS.has(method)) {
+    const token = csrfToken ?? readCSRFCookie()
+    if (token) config.headers['X-CSRF-Token'] = token
   }
   return config
 })

@@ -110,7 +110,7 @@ export interface TestimonialItem {
   quote: string
   author: string
   role: string
-  avatar?: string
+  avatar_url?: string
 }
 
 export interface TestimonialsSection {
@@ -153,6 +153,20 @@ export interface FeaturedProjectsSection {
   subtitle?: string
   cta_label?: string
   cta_url?: string
+}
+
+export interface ContactSection {
+  title?: string
+  image_url?: string
+  address?: string
+  email?: string
+  phone?: string
+  map_embed?: string
+}
+
+export interface EmbedSection {
+  embed_code: string
+  caption?: string
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import { CTAEditor } from './cta-editor'
 import { WhyUsEditor } from './why-us-editor'
 import { ProcessEditor } from './process-editor'
 import { FeaturedProjectsEditor } from './featured-projects-editor'
+import { ContactEditor } from './contact-editor'
+import { EmbedEditor } from './embed-editor'
 import { Field, inputClass, textareaClass } from './editor-primitives'
 
 export interface SectionEditorProps {
@@ -24,6 +26,8 @@ const KNOWN_EDITORS: Record<string, ComponentType<SectionEditorProps>> = {
   why_us:            WhyUsEditor,
   process:           ProcessEditor,
   featured_projects: FeaturedProjectsEditor,
+  contact:           ContactEditor,
+  embed:             EmbedEditor,
 }
 
 function formatFieldLabel(key: string): string {

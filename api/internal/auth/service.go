@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -26,7 +27,26 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid email or password")
 	ErrPortalNotReady      = errors.New("portal not ready")
 	ErrSupabaseUnreachable = errors.New("supabase project unreachable")
+	// ErrSupabaseDNSFailure means the hostname in the stored supabase_url did not
+	// resolve. Almost always means the project was deleted or paused on Supabase,
+	// or the URL was wrong when registered. Distinct from ErrSupabaseUnreachable
+	// so the operator log + frontend can show the right recovery hint.
+	ErrSupabaseDNSFailure = errors.New("supabase project not found (DNS)")
 )
+
+// classifySupabaseHTTPErr maps a net/http transport error to the right sentinel.
+// DNS failure is the highest-signal cause — surfaced separately so logs and the
+// frontend can distinguish "project deleted" from "transient outage."
+func classifySupabaseHTTPErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return ErrSupabaseDNSFailure
+	}
+	return ErrSupabaseUnreachable
+}
 
 type Service struct {
 	repo        *Repository
@@ -118,11 +138,19 @@ func (s *Service) verifyPassword(ctx context.Context, supabaseURL, anonKey, emai
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		slog.Error("supabase password auth: network error",
-			slog.String("url", supabaseURL),
-			slog.String("error", err.Error()),
-		)
-		return "", ErrSupabaseUnreachable
+		classified := classifySupabaseHTTPErr(err)
+		if errors.Is(classified, ErrSupabaseDNSFailure) {
+			slog.Error("supabase password auth: dns failure (project likely paused or deleted)",
+				slog.String("url", supabaseURL),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			slog.Error("supabase password auth: network error",
+				slog.String("url", supabaseURL),
+				slog.String("error", err.Error()),
+			)
+		}
+		return "", classified
 	}
 	defer resp.Body.Close()
 
@@ -194,7 +222,14 @@ func (s *Service) updateSupabasePassword(ctx context.Context, supabaseURL, servi
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("supabase update password: %w", err)
+		classified := classifySupabaseHTTPErr(err)
+		if errors.Is(classified, ErrSupabaseDNSFailure) {
+			slog.Error("supabase update password: dns failure (project likely paused or deleted)",
+				slog.String("url", supabaseURL),
+				slog.String("error", err.Error()),
+			)
+		}
+		return classified
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -324,8 +359,13 @@ func (s *Service) ensureSupabaseUser(ctx context.Context, supabaseURL, serviceRo
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		slog.Error("supabase create user: network error", slog.String("url", supabaseURL), slog.String("error", err.Error()))
-		return "", ErrSupabaseUnreachable
+		classified := classifySupabaseHTTPErr(err)
+		if errors.Is(classified, ErrSupabaseDNSFailure) {
+			slog.Error("supabase create user: dns failure (project likely paused or deleted)", slog.String("url", supabaseURL), slog.String("error", err.Error()))
+		} else {
+			slog.Error("supabase create user: network error", slog.String("url", supabaseURL), slog.String("error", err.Error()))
+		}
+		return "", classified
 	}
 	defer resp.Body.Close()
 

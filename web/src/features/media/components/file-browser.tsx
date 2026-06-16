@@ -45,10 +45,14 @@ export function FileBrowser({ bucket, selectable, onSelect }: FileBrowserProps) 
   const pickerRef = useRef<HTMLDivElement>(null)
 
   const currentPath = pathStack.join('/')
-  const { data: items, isLoading, isError } = useStorageFiles(bucket, currentPath)
+  const { data: rawItems, isLoading, isError } = useStorageFiles(bucket, currentPath)
   const { mutateAsync: upload, isPending: isUploading } = useUploadFile(bucket)
 
-  const folders = (items ?? []).filter((i) => i.isFolder)
+  // Hide .gitkeep placeholder files — these are created by the portal to establish
+  // empty folder structure and should never be visible to the user.
+  const items = (rawItems ?? []).filter((i) => i.name !== '.gitkeep')
+
+  const folders = items.filter((i) => i.isFolder)
 
   // Drive the progress bar fill via DOM — avoids JSX inline style for a dynamic value
   useEffect(() => {
@@ -165,7 +169,7 @@ export function FileBrowser({ bucket, selectable, onSelect }: FileBrowserProps) 
     if (!valid.length) return
 
     // Duplicate detection against current directory listing
-    const existingNames = new Set((items ?? []).map((i) => i.name))
+    const existingNames = new Set(items.map((i) => i.name))
     const dupes = valid.map((f) => f.name).filter((n) => existingNames.has(n))
 
     if (dupes.length > 0) {
@@ -250,7 +254,7 @@ export function FileBrowser({ bucket, selectable, onSelect }: FileBrowserProps) 
           </div>
         )}
 
-        {!isLoading && !isError && items?.length === 0 && (
+        {!isLoading && !isError && items.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-20 text-center">
             <ImageIcon size={36} className="text-ink/20" />
             <p className="font-sans font-semibold text-ink/40">This folder is empty</p>
@@ -258,7 +262,7 @@ export function FileBrowser({ bucket, selectable, onSelect }: FileBrowserProps) 
           </div>
         )}
 
-        {!isLoading && !isError && !!items?.length && (
+        {!isLoading && !isError && items.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {items.map((item) => (
               <StorageItemCard

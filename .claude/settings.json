@@ -89,7 +89,8 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(curl -s -c /tmp/t.txt http://localhost:8081/api/auth/csrf)",
       "Bash(curl -s -o /dev/null -w '%{http_code} %{time_total}s' https://mjzkfxkdejyiuirzgupz.supabase.co/auth/v1/settings)",
-      "Bash(curl -s -w '\\\\nHTTP: %{http_code}' -X POST -H 'Content-Type: application/json' -d '{\"email\":\"test@test.com\",\"password\":\"test\"}' https://mjzkfxkdejyiuirzgupz.supabase.co/auth/v1/token?grant_type=password)"
+      "Bash(curl -s -w '\\\\nHTTP: %{http_code}' -X POST -H 'Content-Type: application/json' -d '{\"email\":\"test@test.com\",\"password\":\"test\"}' https://mjzkfxkdejyiuirzgupz.supabase.co/auth/v1/token?grant_type=password)",
+      "Bash(npx eslint *)"
     ],
     "additionalDirectories": [
       "/Users/dagi/Documents/Github/Matt x Dagim/format-studio-client-site-template/supabase/migrations",

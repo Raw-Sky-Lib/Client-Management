@@ -1,6 +1,7 @@
 import type { HeroSection } from '@/types'
 import type { SectionEditorProps } from './section-editor'
 import { Field, inputClass, textareaClass } from './editor-primitives'
+import { ImagePickerField } from './image-picker-field'
 
 export function HeroEditor({ value, onChange }: SectionEditorProps) {
   const hero = value as Partial<HeroSection>
@@ -40,6 +41,7 @@ export function HeroEditor({ value, onChange }: SectionEditorProps) {
           className={inputClass}
         />
       </Field>
+
       <Field label="CTA URL">
         <input
           type="text"
@@ -49,6 +51,12 @@ export function HeroEditor({ value, onChange }: SectionEditorProps) {
           className={inputClass}
         />
       </Field>
+
+      <ImagePickerField
+        label="Hero Image"
+        value={hero.image_url ?? ''}
+        onChange={url => set('image_url', url)}
+      />
     </div>
   )
 }

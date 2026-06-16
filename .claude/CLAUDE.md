@@ -5,6 +5,24 @@
 
 ---
 
+## Task workflow (finalization phase)
+
+Active work is tracked in `.claude/tasks.md` (CP-1 → CP-18). The user reviews and tests every task before the next one starts. Follow this loop strictly:
+
+1. Start one task at a time. Announce which task ID you're starting.
+2. Do the work. Don't bundle multiple tasks.
+3. **Always end with a "How to test" section** — concrete repro steps the user can run, expected outcome, what to look for. No vague "try it out" — give exact URLs, buttons, commands, and acceptance signals.
+4. Ask the user to review. Wait for explicit go-ahead before starting the next task.
+5. When the user confirms it passes, mark the task `[✓]` in `tasks.md` with the date, then propose the next one.
+
+The same loop applies to the Agency-Hub tasks (AH-1 → AH-13) — see that repo's `tasks.md`.
+
+### Template / test-tenant sync
+
+`/Users/dagi/Documents/Github/Matt x Dagim/client-dagim-digital-agency/` is a live client site built from `format-studio-client-site-template` a while ago. The user runs it as the test tenant against the portal. **It does NOT pull updates automatically.** Whenever a task modifies the template, mirror the equivalent change in this client repo in the same step (copy new files verbatim, port edits to existing files with care — beware of brand-specific differences in `globals.css`, `layout.tsx`, fonts, etc.). Confirm the sync in the same "How to test" section so the user can test against a real Supabase-backed site.
+
+---
+
 ## What This App Is
 
 client-portal is the CMS dashboard that agency clients use to manage their website content — pages, blog posts, media, form submissions, settings, and an AI writing assistant. It is multi-tenant: one hosted instance serves every client, each reading/writing their own Supabase project.
